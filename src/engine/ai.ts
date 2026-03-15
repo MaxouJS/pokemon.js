@@ -230,3 +230,74 @@ export function getAIAction(state: BattleState, difficulty: AIDifficulty = 'rand
       return getRandomAction(state);
   }
 }
+
+/**
+ * Get AI actions for all active opponent slots in a doubles battle.
+ * Returns one BattleAction per active slot with the slot field set.
+ */
+export function getDoublesAIActions(
+  state: BattleState,
+  difficulty: AIDifficulty = 'greedy',
+): BattleAction[] {
+  const side = state.opponent;
+  const actions: BattleAction[] = [];
+
+  for (let s = 0; s < side.active_indices.length; s++) {
+    const idx = side.active_indices[s];
+    const mon = side.team[idx];
+
+    if (mon.current_hp <= 0) {
+      // Fainted — try to switch in a bench Pokemon
+      const benchIdx = side.team.findIndex(
+        (p, i) => p.current_hp > 0 && !side.active_indices.includes(i),
+      );
+      if (benchIdx >= 0) {
+        actions.push({ type: 'switch', pokemon_index: benchIdx, slot: s });
+      } else {
+        actions.push({ type: 'move', move_index: 0, slot: s });
+      }
+      continue;
+    }
+
+    const validMoves = getValidMoveIndices(mon);
+
+    if (difficulty === 'random' || validMoves.length === 0) {
+      const moveIdx = validMoves.length > 0
+        ? validMoves[Math.floor(Math.random() * validMoves.length)]
+        : 0;
+      actions.push({ type: 'move', move_index: moveIdx, slot: s });
+      continue;
+    }
+
+    // Greedy / smart: pick the move with highest estimated damage against any opponent
+    const targets = state.player.active_indices
+      .map(i => state.player.team[i])
+      .filter(p => p.current_hp > 0);
+
+    let bestIdx = validMoves[0];
+    let bestDamage = -1;
+
+    for (const mi of validMoves) {
+      const move = mon.moves[mi];
+      if (move.damage_class === 'status') {
+        if (bestDamage < 0) { bestIdx = mi; bestDamage = 0; }
+        continue;
+      }
+      for (const target of targets) {
+        const result = calculateDamage(mon, target, move, {
+          weather: state.weather.type,
+          critical_override: false,
+          random_override: 0.925,
+        });
+        if (result.damage > bestDamage) {
+          bestDamage = result.damage;
+          bestIdx = mi;
+        }
+      }
+    }
+
+    actions.push({ type: 'move', move_index: bestIdx, slot: s });
+  }
+
+  return actions;
+}

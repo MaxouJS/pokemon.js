@@ -1,6 +1,6 @@
 import {
-  getPokemon, createBattleState,
-  executeDoublesTurn, suggestMoves,
+  getPokemon, createBattleState, createDefaultTeamMember,
+  executeDoublesTurn, getDoublesAIActions,
   TYPE_COLORS,
 } from '@objectifthunes/pokemon';
 import type { BattleState, BattleAction, BattleLogEntry, PokemonTypeName, TeamMemberConfig } from '@objectifthunes/pokemon';
@@ -11,9 +11,7 @@ const POOL = [
   'dragonite', 'snorlax', 'scizor', 'tyranitar', 'garchomp', 'lucario',
 ];
 
-const LEVEL = 50;
-
-const ITEMS: Record<string, string> = {
+const DEMO_ITEMS: Record<string, string> = {
   charizard: 'life-orb', blastoise: 'leftovers', venusaur: 'black-sludge',
   pikachu: 'focus-sash', gengar: 'choice-specs', alakazam: 'focus-sash',
   dragonite: 'lum-berry', snorlax: 'leftovers', scizor: 'choice-band',
@@ -22,12 +20,7 @@ const ITEMS: Record<string, string> = {
 
 function buildConfig(name: string): TeamMemberConfig {
   const p = getPokemon(name)!;
-  const moves = suggestMoves(p, 4).map(m => m.name);
-  return {
-    pokemon_id: p.id, level: LEVEL, moves,
-    ability: p.abilities[0]?.name ?? 'unknown',
-    held_item: ITEMS[name] ?? null,
-  };
+  return createDefaultTeamMember(p, { held_item: DEMO_DEMO_ITEMS[name] ?? null });
 }
 
 export function renderDoubles(container: HTMLElement) {
@@ -60,7 +53,7 @@ export function renderDoubles(container: HTMLElement) {
       btn.appendChild(img);
       const info = el('div', { style: 'display:flex;flex-direction:column;align-items:start;' });
       info.appendChild(el('span', {}, fmtName(name)));
-      info.appendChild(el('span', { style: 'font-size:9px;color:#888;' }, `${fmtName(p.abilities[0]?.name ?? '')} \u00B7 ${fmtName(ITEMS[name] ?? '')}`));
+      info.appendChild(el('span', { style: 'font-size:9px;color:#888;' }, `${fmtName(p.abilities[0]?.name ?? '')} \u00B7 ${fmtName(DEMO_ITEMS[name] ?? '')}`));
       btn.appendChild(info);
       btn.onclick = () => {
         const idx = selected.indexOf(name);
@@ -289,32 +282,7 @@ export function renderDoubles(container: HTMLElement) {
       playerActions.push(action);
     }
 
-    // AI actions: simple greedy for each opponent slot
-    const opponentActions: BattleAction[] = [];
-    for (let s = 0; s < state.opponent.active_indices.length; s++) {
-      const mon = state.opponent.team[state.opponent.active_indices[s]];
-      if (mon.current_hp <= 0) {
-        // Need to switch
-        const benchIdx = state.opponent.team.findIndex((p, i) => p.current_hp > 0 && !state!.opponent.active_indices.includes(i));
-        if (benchIdx >= 0) {
-          opponentActions.push({ type: 'switch', pokemon_index: benchIdx, slot: s });
-        } else {
-          opponentActions.push({ type: 'move', move_index: 0, slot: s });
-        }
-      } else {
-        // Pick best damaging move
-        let bestIdx = 0;
-        let bestPow = 0;
-        for (let i = 0; i < mon.moves.length; i++) {
-          const pow = mon.moves[i].power ?? 0;
-          if (pow > bestPow && (mon.pp[mon.moves[i].name] ?? 0) > 0) {
-            bestPow = pow;
-            bestIdx = i;
-          }
-        }
-        opponentActions.push({ type: 'move', move_index: bestIdx, slot: s });
-      }
-    }
+    const opponentActions = getDoublesAIActions(state, 'greedy');
 
     const result = executeDoublesTurn(state, playerActions, opponentActions);
     state = result.state;

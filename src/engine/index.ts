@@ -54,12 +54,14 @@ export {
 export {
   createBattlePokemon,
   createBattleState,
+  createDefaultTeamMember,
   executeTurn,
 } from './battle';
 
 // AI
 export {
   getAIAction,
+  getDoublesAIActions,
   type AIDifficulty,
 } from './ai';
 

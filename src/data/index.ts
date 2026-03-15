@@ -197,6 +197,31 @@ export function getAllItems(): Item[] {
   return ITEMS;
 }
 
+/** Competitive battle-holdable items (excludes balls, potions, key items, etc.) */
+const BATTLE_HOLD_CATEGORIES = new Set([
+  'held-items', 'choice', 'type-enhancement', 'type-protection',
+  'in-a-pinch', 'bad-held-items', 'species-specific', 'plates',
+  'scarves', 'jewels',
+]);
+
+let _holdableItemsCache: Item[] | null = null;
+
+/**
+ * Get all items that can be held by a Pokemon in battle.
+ * Filters by the "holdable" attribute and competitive categories,
+ * excluding balls, potions, TMs, and key items.
+ */
+export function getHoldableItems(): Item[] {
+  if (_holdableItemsCache) return _holdableItemsCache;
+  _holdableItemsCache = ITEMS
+    .filter(i =>
+      i.attributes.includes('holdable') &&
+      BATTLE_HOLD_CATEGORIES.has(i.category),
+    )
+    .sort((a, b) => a.name.localeCompare(b.name));
+  return _holdableItemsCache;
+}
+
 // Berries
 export function getBerry(name: string): Berry | undefined {
   return BERRIES.find(b => b.name.toLowerCase() === name.toLowerCase());

@@ -11,6 +11,8 @@ import type {
 } from '../types';
 import { PERFECT_IVS, ZERO_EVS, ZERO_STAGES } from '../types';
 import { getPokemon, getSpecies, getMove } from '../data';
+import { suggestMoves } from './moves';
+import type { Pokemon } from '../types';
 import { calcAllStats } from './stats';
 import { calculateDamage } from './damage';
 import { checkAccuracy } from './accuracy';
@@ -137,6 +139,32 @@ export function createBattleState(
     log: [],
     phase: 'select-action',
     winner: null,
+  };
+}
+
+/**
+ * Create a TeamMemberConfig with sensible defaults from a Pokemon.
+ * Picks the first ability, suggests 4 moves, and uses level 50.
+ */
+export function createDefaultTeamMember(
+  pokemon: Pokemon,
+  options?: {
+    level?: number;
+    ability?: string;
+    nature?: string;
+    held_item?: string | null;
+    moves?: string[];
+  },
+): TeamMemberConfig {
+  const moves = options?.moves ?? suggestMoves(pokemon, 4).map(m => m.name);
+  const ability = options?.ability ?? pokemon.abilities[0]?.name ?? 'unknown';
+  return {
+    pokemon_id: pokemon.id,
+    level: options?.level ?? 50,
+    moves,
+    ability,
+    nature: (options?.nature ?? 'hardy') as any,
+    held_item: options?.held_item ?? null,
   };
 }
 

@@ -1,6 +1,6 @@
 import {
-  getPokemon, getMove, createBattleState,
-  executeTurn, getAIAction, suggestMoves,
+  getPokemon, createBattleState, createDefaultTeamMember,
+  executeTurn, getAIAction,
   TYPE_COLORS,
 } from '@objectifthunes/pokemon';
 import type { BattleState, BattleAction, BattleLogEntry, PokemonTypeName, TeamMemberConfig } from '@objectifthunes/pokemon';
@@ -11,35 +11,16 @@ const POOL = [
   'dragonite', 'snorlax', 'scizor', 'tyranitar', 'garchomp', 'lucario',
 ];
 
-const LEVEL = 50;
-
-// Competitive items for the demo Pokemon
-const ITEMS: Record<string, string> = {
-  charizard: 'life-orb',
-  blastoise: 'leftovers',
-  venusaur: 'black-sludge',
-  pikachu: 'choice-specs',
-  gengar: 'choice-specs',
-  alakazam: 'life-orb',
-  dragonite: 'lum-berry',
-  snorlax: 'leftovers',
-  scizor: 'choice-band',
-  tyranitar: 'choice-scarf',
-  garchomp: 'life-orb',
-  lucario: 'focus-sash',
+const DEMO_ITEMS: Record<string, string> = {
+  charizard: 'life-orb', blastoise: 'leftovers', venusaur: 'black-sludge',
+  pikachu: 'choice-specs', gengar: 'choice-specs', alakazam: 'life-orb',
+  dragonite: 'lum-berry', snorlax: 'leftovers', scizor: 'choice-band',
+  tyranitar: 'choice-scarf', garchomp: 'life-orb', lucario: 'focus-sash',
 };
 
 function buildConfig(name: string): TeamMemberConfig {
   const p = getPokemon(name)!;
-  const moves = suggestMoves(p, 4).map(m => m.name);
-  const ability = p.abilities[0]?.name ?? 'unknown';
-  return {
-    pokemon_id: p.id,
-    level: LEVEL,
-    moves,
-    ability,
-    held_item: ITEMS[name] ?? null,
-  };
+  return createDefaultTeamMember(p, { held_item: DEMO_ITEMS[name] ?? null });
 }
 
 export function renderBattle(container: HTMLElement) {
@@ -67,7 +48,7 @@ export function renderBattle(container: HTMLElement) {
     for (const name of POOL) {
       const p = getPokemon(name)!;
       const ability = p.abilities[0]?.name ?? '';
-      const item = ITEMS[name];
+      const item = DEMO_ITEMS[name];
       const btn = document.createElement('button');
       btn.className = `team-pick-btn ${selected.includes(name) ? 'selected' : ''}`;
       const img = el('img', { src: spriteUrl(p.id), alt: name, style: 'width:40px;height:40px;' });

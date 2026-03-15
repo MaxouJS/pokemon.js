@@ -1,9 +1,10 @@
 import {
-  searchPokemon, getPokemon, getMovesForPokemon,
-  getAllItems, getAllNatures, suggestMoves,
+  searchPokemon, getMovesForPokemon,
+  getHoldableItems, getAllNatures,
+  createDefaultTeamMember,
   TYPE_COLORS,
 } from '@objectifthunes/pokemon';
-import type { Pokemon, Move, Item, Nature, PokemonTypeName } from '@objectifthunes/pokemon';
+import type { Pokemon, PokemonTypeName, TeamMemberConfig } from '@objectifthunes/pokemon';
 import { el, typeBadge, fmtName, spriteUrl, renderStatBars } from '../helpers';
 
 const MAX_TEAM = 6;
@@ -11,6 +12,7 @@ const MAX_MOVES = 4;
 
 interface TeamMember {
   pokemon: Pokemon;
+  config: TeamMemberConfig;
   nickname: string;
   ability: string;
   nature: string;
@@ -20,15 +22,16 @@ interface TeamMember {
 }
 
 function createMember(pokemon: Pokemon): TeamMember {
-  const suggested = suggestMoves(pokemon, 4).map(m => m.name);
+  const config = createDefaultTeamMember(pokemon);
   return {
     pokemon,
+    config,
     nickname: pokemon.name,
-    ability: pokemon.abilities[0]?.name ?? '',
-    nature: 'adamant',
-    held_item: null,
-    moves: suggested,
-    level: 50,
+    ability: config.ability ?? pokemon.abilities[0]?.name ?? '',
+    nature: config.nature ?? 'hardy',
+    held_item: config.held_item ?? null,
+    moves: config.moves ?? [],
+    level: config.level ?? 50,
   };
 }
 
@@ -42,11 +45,7 @@ export function renderTeamBuilder(container: HTMLElement) {
   let editingIndex: number | null = null;
 
   const allNatures = getAllNatures();
-  const allItems = getAllItems()
-    .filter(i => i.category === 'held-items' || i.name.includes('berry') || i.name.includes('orb') || i.name.includes('choice') || i.name.includes('band') || i.name.includes('sash') || i.name.includes('vest') || i.name.includes('specs') || i.name.includes('scarf') || i.name.includes('leftovers') || i.name.includes('sludge') || i.name.includes('lens') || i.name.includes('claw'))
-    .sort((a, b) => a.name.localeCompare(b.name));
-  // Fallback: if filter is too aggressive, use all items
-  const holdableItems = allItems.length > 10 ? allItems : getAllItems().sort((a, b) => a.name.localeCompare(b.name));
+  const holdableItems = getHoldableItems();
 
   // ─── Team Overview ───
   const teamSection = el('div', { class: 'demo-section' });

@@ -84,6 +84,7 @@ export {
   getGrowthRate,
   getExperienceForLevel,
   getEggGroups,
+  getHoldableItems,
   POKEMON_COUNT,
   SPECIES_COUNT,
   MOVES_COUNT,
@@ -129,8 +130,8 @@ export {
 } from './engine/status';
 export { resolveTurnOrder } from './engine/turn-order';
 export type { TurnOrderResult, Side } from './engine/turn-order';
-export { createBattleState, createBattlePokemon, executeTurn } from './engine/battle';
-export { getAIAction } from './engine/ai';
+export { createBattleState, createBattlePokemon, createDefaultTeamMember, executeTurn } from './engine/battle';
+export { getAIAction, getDoublesAIActions } from './engine/ai';
 export type { AIDifficulty } from './engine/ai';
 
 // Experience & Leveling
