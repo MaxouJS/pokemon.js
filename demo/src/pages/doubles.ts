@@ -1,35 +1,18 @@
 import {
-  getPokemon, createBattleState, createDefaultTeamMember,
+  createBattleState, createDefaultTeamMember,
   executeDoublesTurn, getDoublesAIActions,
-  TYPE_COLORS,
+  getAllPokemon, TYPE_COLORS,
 } from '@objectifthunes/pokemon';
 import type { BattleState, BattleAction, BattleLogEntry, PokemonTypeName, TeamMemberConfig } from '@objectifthunes/pokemon';
 import { el, fmtName, spriteUrl, typeBadge, hpColor } from '../helpers';
-
-const POOL = [
-  'charizard', 'blastoise', 'venusaur', 'pikachu', 'gengar', 'alakazam',
-  'dragonite', 'snorlax', 'scizor', 'tyranitar', 'garchomp', 'lucario',
-];
-
-const DEMO_ITEMS: Record<string, string> = {
-  charizard: 'life-orb', blastoise: 'leftovers', venusaur: 'black-sludge',
-  pikachu: 'focus-sash', gengar: 'choice-specs', alakazam: 'focus-sash',
-  dragonite: 'lum-berry', snorlax: 'leftovers', scizor: 'choice-band',
-  tyranitar: 'choice-scarf', garchomp: 'life-orb', lucario: 'focus-sash',
-};
-
-function buildConfig(name: string): TeamMemberConfig {
-  const p = getPokemon(name)!;
-  return createDefaultTeamMember(p, { held_item: DEMO_DEMO_ITEMS[name] ?? null });
-}
+import { renderTeamBuilder } from '../team-builder-ui';
 
 export function renderDoubles(container: HTMLElement) {
   const header = el('div', { class: 'page-header' });
   header.appendChild(el('h2', {}, 'Doubles Battle'));
-  header.appendChild(el('p', {}, 'Double battle format — two Pokemon per side. Spread moves hit both opponents at 0.75x damage. Pick 4 Pokemon for your team.'));
+  header.appendChild(el('p', {}, 'Double battle format — two Pokemon per side. Build your team of 4 from all 649 Pokemon, or hit Random for a quick match.'));
   container.appendChild(header);
 
-  let selected: string[] = [];
   let state: BattleState | null = null;
   let logEntries: BattleLogEntry[] = [];
   let pendingSlot0Action: BattleAction | null = null;
@@ -40,56 +23,28 @@ export function renderDoubles(container: HTMLElement) {
 
   function renderPickPhase() {
     battleContainer.innerHTML = '';
-    const section = el('div');
-    section.appendChild(el('h3', { style: 'margin-bottom:4px;' }, 'Your Team (pick 4)'));
-    section.appendChild(el('p', { class: 'desc' }, 'Select 4 Pokemon for doubles. Two will be active at a time.'));
-
-    const picker = el('div', { class: 'team-picker' });
-    for (const name of POOL) {
-      const p = getPokemon(name)!;
-      const btn = document.createElement('button');
-      btn.className = `team-pick-btn ${selected.includes(name) ? 'selected' : ''}`;
-      const img = el('img', { src: spriteUrl(p.id), alt: name, style: 'width:40px;height:40px;' });
-      btn.appendChild(img);
-      const info = el('div', { style: 'display:flex;flex-direction:column;align-items:start;' });
-      info.appendChild(el('span', {}, fmtName(name)));
-      info.appendChild(el('span', { style: 'font-size:9px;color:#888;' }, `${fmtName(p.abilities[0]?.name ?? '')} \u00B7 ${fmtName(DEMO_ITEMS[name] ?? '')}`));
-      btn.appendChild(info);
-      btn.onclick = () => {
-        const idx = selected.indexOf(name);
-        if (idx >= 0) selected.splice(idx, 1);
-        else if (selected.length < 4) selected.push(name);
-        renderPickPhase();
-      };
-      picker.appendChild(btn);
-    }
-    section.appendChild(picker);
-
-    const startBtn = document.createElement('button');
-    startBtn.className = 'primary';
-    startBtn.textContent = `Start Doubles (${selected.length}/4 selected)`;
-    startBtn.disabled = selected.length < 4;
-    startBtn.style.marginTop = '8px';
-    startBtn.onclick = startBattle;
-    section.appendChild(startBtn);
-    battleContainer.appendChild(section);
+    renderTeamBuilder(battleContainer, {
+      teamSize: { min: 4, max: 4 },
+      onStart: startBattle,
+    });
   }
 
-  function startBattle() {
-    const available = POOL.filter(n => !selected.includes(n));
+  function startBattle(playerTeam: TeamMemberConfig[]) {
+    const all = getAllPokemon();
+    const playerIds = new Set(playerTeam.map(t => t.pokemon_id));
+    const available = all.filter(p => !playerIds.has(p.id));
     const shuffled = available.sort(() => Math.random() - 0.5);
-    const opponentNames = shuffled.slice(0, 4);
+    const oppPokemon = shuffled.slice(0, 4);
 
-    const playerConfigs = selected.map(n => buildConfig(n));
-    const opponentConfigs = opponentNames.map(n => buildConfig(n));
+    const opponentConfigs = oppPokemon.map(p => createDefaultTeamMember(p));
 
-    state = createBattleState(playerConfigs, opponentConfigs, { format: 'doubles' });
+    state = createBattleState(playerTeam, opponentConfigs, { format: 'doubles' });
     logEntries = [];
     pendingSlot0Action = null;
     renderBattlePhase();
   }
 
-  function renderPokemonSlot(mon: { pokemon: any; nickname: string; ability: string; held_item: string | null; current_hp: number; max_hp: number; status: string | null; moves: any[]; pp: Record<string, number> }, spriteType: 'front' | 'back') {
+  function renderPokemonSlot(mon: any, spriteType: 'front' | 'back') {
     const div = el('div', { style: 'text-align:center;flex:1;' });
     if (mon.current_hp <= 0) {
       div.appendChild(el('div', { style: 'font-size:12px;color:#555;padding:20px;' }, `${fmtName(mon.pokemon.name)} fainted`));
@@ -148,19 +103,17 @@ export function renderDoubles(container: HTMLElement) {
     // ─── Doubles field: 2v2 ───
     const field = el('div', { style: 'display:flex;gap:12px;align-items:center;justify-content:center;margin-bottom:16px;' });
 
-    // Player's two active
     const playerSlots = el('div', { style: 'display:flex;gap:8px;' });
     for (const idx of state.player.active_indices) {
-      playerSlots.appendChild(renderPokemonSlot(state.player.team[idx] as any, 'back'));
+      playerSlots.appendChild(renderPokemonSlot(state.player.team[idx], 'back'));
     }
     field.appendChild(playerSlots);
 
     field.appendChild(el('div', { style: 'font-size:20px;font-weight:900;color:#333;padding:0 12px;' }, 'VS'));
 
-    // Opponent's two active
     const oppSlots = el('div', { style: 'display:flex;gap:8px;' });
     for (const idx of state.opponent.active_indices) {
-      oppSlots.appendChild(renderPokemonSlot(state.opponent.team[idx] as any, 'front'));
+      oppSlots.appendChild(renderPokemonSlot(state.opponent.team[idx], 'front'));
     }
     field.appendChild(oppSlots);
 
@@ -177,30 +130,26 @@ export function renderDoubles(container: HTMLElement) {
       again.className = 'primary';
       again.textContent = 'Play Again';
       again.style.marginTop = '16px';
-      again.onclick = () => { selected = []; state = null; logEntries = []; pendingSlot0Action = null; renderPickPhase(); };
+      again.onclick = () => { state = null; logEntries = []; pendingSlot0Action = null; renderPickPhase(); };
       result.appendChild(again);
       arena.appendChild(result);
     } else {
-      // ─── Action selection for each active slot ───
+      // ─── Action selection ───
       const activeSlots = state.player.active_indices
         .map((idx, slot) => ({ mon: state!.player.team[idx], slot, idx }))
         .filter(s => s.mon.current_hp > 0);
 
       if (activeSlots.length === 0) {
-        // Need to switch in — auto for now
         arena.appendChild(el('div', { style: 'text-align:center;color:#888;padding:16px;' }, 'No active Pokemon...'));
       } else if (pendingSlot0Action === null && activeSlots.length >= 2) {
-        // Need action for slot 0
         const slot0 = activeSlots[0];
         arena.appendChild(el('div', { style: 'text-align:center;font-size:12px;color:#888;margin-bottom:8px;' }, `Choose action for ${fmtName(slot0.mon.pokemon.name)} (Slot 1):`));
         arena.appendChild(renderMoveButtons(slot0.mon, slot0.slot));
       } else if (pendingSlot0Action !== null && activeSlots.length >= 2) {
-        // Need action for slot 1
         const slot1 = activeSlots[1];
         arena.appendChild(el('div', { style: 'text-align:center;font-size:12px;color:#888;margin-bottom:8px;' }, `Choose action for ${fmtName(slot1.mon.pokemon.name)} (Slot 2):`));
         arena.appendChild(renderMoveButtons(slot1.mon, slot1.slot));
       } else {
-        // Only 1 active — just need one action
         const slot = activeSlots[0];
         arena.appendChild(el('div', { style: 'text-align:center;font-size:12px;color:#888;margin-bottom:8px;' }, `Choose action for ${fmtName(slot.mon.pokemon.name)}:`));
         arena.appendChild(renderMoveButtons(slot.mon, slot.slot));
@@ -267,13 +216,11 @@ export function renderDoubles(container: HTMLElement) {
       .filter(s => s.mon.current_hp > 0);
 
     if (activeSlots.length >= 2 && pendingSlot0Action === null && slot === activeSlots[0].s) {
-      // First action submitted — wait for second
       pendingSlot0Action = action;
       renderBattlePhase();
       return;
     }
 
-    // Build player actions array
     const playerActions: BattleAction[] = [];
     if (pendingSlot0Action) {
       playerActions.push(pendingSlot0Action);

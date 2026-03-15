@@ -1,35 +1,18 @@
 import {
-  getPokemon, createBattleState, createDefaultTeamMember,
-  executeTurn, getAIAction,
+  createBattleState, executeTurn, getAIAction,
+  getAllPokemon, suggestMoves, createDefaultTeamMember,
   TYPE_COLORS,
 } from '@objectifthunes/pokemon';
 import type { BattleState, BattleAction, BattleLogEntry, PokemonTypeName, TeamMemberConfig } from '@objectifthunes/pokemon';
 import { el, fmtName, spriteUrl, typeBadge, hpColor } from '../helpers';
-
-const POOL = [
-  'charizard', 'blastoise', 'venusaur', 'pikachu', 'gengar', 'alakazam',
-  'dragonite', 'snorlax', 'scizor', 'tyranitar', 'garchomp', 'lucario',
-];
-
-const DEMO_ITEMS: Record<string, string> = {
-  charizard: 'life-orb', blastoise: 'leftovers', venusaur: 'black-sludge',
-  pikachu: 'choice-specs', gengar: 'choice-specs', alakazam: 'life-orb',
-  dragonite: 'lum-berry', snorlax: 'leftovers', scizor: 'choice-band',
-  tyranitar: 'choice-scarf', garchomp: 'life-orb', lucario: 'focus-sash',
-};
-
-function buildConfig(name: string): TeamMemberConfig {
-  const p = getPokemon(name)!;
-  return createDefaultTeamMember(p, { held_item: DEMO_ITEMS[name] ?? null });
-}
+import { renderTeamBuilder } from '../team-builder-ui';
 
 export function renderBattle(container: HTMLElement) {
   const header = el('div', { class: 'page-header' });
   header.appendChild(el('h2', {}, 'Battle Demo'));
-  header.appendChild(el('p', {}, "Pick your team and fight the AI. Abilities, held items, entry hazards, and screens are all active."));
+  header.appendChild(el('p', {}, "Build your team from all 649 Pokemon — pick moves, items, and abilities — then fight the AI. Or hit Random for a quick match."));
   container.appendChild(header);
 
-  let selected: string[] = [];
   let state: BattleState | null = null;
   let logEntries: BattleLogEntry[] = [];
   const battleContainer = el('div');
@@ -39,54 +22,23 @@ export function renderBattle(container: HTMLElement) {
 
   function renderPickPhase() {
     battleContainer.innerHTML = '';
-
-    const section = el('div');
-    section.appendChild(el('h3', { style: 'margin-bottom:4px;' }, 'Your Team (pick 1-3)'));
-    section.appendChild(el('p', { class: 'desc' }, "Click to select your team members. Each Pokemon has its ability and a held item. The opponent's team will be randomly chosen."));
-
-    const picker = el('div', { class: 'team-picker' });
-    for (const name of POOL) {
-      const p = getPokemon(name)!;
-      const ability = p.abilities[0]?.name ?? '';
-      const item = DEMO_ITEMS[name];
-      const btn = document.createElement('button');
-      btn.className = `team-pick-btn ${selected.includes(name) ? 'selected' : ''}`;
-      const img = el('img', { src: spriteUrl(p.id), alt: name, style: 'width:40px;height:40px;' });
-      btn.appendChild(img);
-      const info = el('div', { style: 'display:flex;flex-direction:column;align-items:start;' });
-      info.appendChild(el('span', {}, fmtName(name)));
-      info.appendChild(el('span', { style: 'font-size:9px;color:#888;' }, `${fmtName(ability)} \u00B7 ${fmtName(item)}`));
-      btn.appendChild(info);
-      btn.onclick = () => {
-        const idx = selected.indexOf(name);
-        if (idx >= 0) selected.splice(idx, 1);
-        else if (selected.length < 3) selected.push(name);
-        renderPickPhase();
-      };
-      picker.appendChild(btn);
-    }
-    section.appendChild(picker);
-
-    const startBtn = document.createElement('button');
-    startBtn.className = 'primary';
-    startBtn.textContent = `Start Battle (${selected.length}/3 selected)`;
-    startBtn.disabled = selected.length === 0;
-    startBtn.style.marginTop = '8px';
-    startBtn.onclick = startBattle;
-    section.appendChild(startBtn);
-
-    battleContainer.appendChild(section);
+    renderTeamBuilder(battleContainer, {
+      teamSize: { min: 1, max: 3 },
+      onStart: startBattle,
+    });
   }
 
-  function startBattle() {
-    const available = POOL.filter(n => !selected.includes(n));
+  function startBattle(playerTeam: TeamMemberConfig[]) {
+    // Build random opponent team
+    const all = getAllPokemon();
+    const playerIds = new Set(playerTeam.map(t => t.pokemon_id));
+    const available = all.filter(p => !playerIds.has(p.id));
     const shuffled = available.sort(() => Math.random() - 0.5);
-    const opponentNames = shuffled.slice(0, 3);
+    const oppPokemon = shuffled.slice(0, 3);
 
-    const playerConfigs = selected.map(n => buildConfig(n));
-    const opponentConfigs = opponentNames.map(n => buildConfig(n));
+    const opponentConfigs = oppPokemon.map(p => createDefaultTeamMember(p));
 
-    state = createBattleState(playerConfigs, opponentConfigs);
+    state = createBattleState(playerTeam, opponentConfigs);
     logEntries = [];
     renderBattlePhase();
   }
@@ -100,7 +52,7 @@ export function renderBattle(container: HTMLElement) {
     const playerMon = state.player.team[state.player.active_index];
     const opponentMon = state.opponent.team[state.opponent.active_index];
 
-    // ─── Field status bar (weather, screens, hazards) ───
+    // ─── Field status bar ───
     const fieldStatus = el('div', { style: 'display:flex;gap:8px;flex-wrap:wrap;justify-content:center;margin-bottom:12px;' });
     if (state.weather.type !== 'none') {
       const weatherColors: Record<string, string> = { sun: '#ffd93d', rain: '#56b6c2', sandstorm: '#c8a96e', hail: '#a8d8ea' };
@@ -120,7 +72,7 @@ export function renderBattle(container: HTMLElement) {
     // ─── Battle Field ───
     const field = el('div', { class: 'battle-field' });
 
-    // Player side (back sprite)
+    // Player side
     const playerSide = el('div', { class: 'battle-pokemon' });
     const pImg = el('img', { src: spriteUrl(playerMon.pokemon.id, 'back'), alt: playerMon.pokemon.name });
     playerSide.appendChild(pImg);
@@ -129,7 +81,6 @@ export function renderBattle(container: HTMLElement) {
     for (const t of playerMon.pokemon.types) pTypes.appendChild(typeBadge(t));
     playerSide.appendChild(pTypes);
 
-    // Ability + item info
     playerSide.appendChild(el('div', { style: 'font-size:9px;color:#888;margin-bottom:4px;' }, `${fmtName(playerMon.ability)}${playerMon.held_item ? ' \u00B7 ' + fmtName(playerMon.held_item) : ''}`));
     if (playerMon.status) {
       const statusColors: Record<string, string> = { burn: '#e06c75', poison: '#b06ab3', 'bad-poison': '#9b59b6', paralysis: '#ffd93d', sleep: '#888', freeze: '#56b6c2' };
@@ -150,7 +101,7 @@ export function renderBattle(container: HTMLElement) {
 
     field.appendChild(el('div', { class: 'battle-vs' }, 'VS'));
 
-    // Opponent side (front sprite)
+    // Opponent side
     const oppSide = el('div', { class: 'battle-pokemon' });
     const oImg = el('img', { src: spriteUrl(opponentMon.pokemon.id), alt: opponentMon.pokemon.name });
     oppSide.appendChild(oImg);
@@ -179,7 +130,7 @@ export function renderBattle(container: HTMLElement) {
 
     arena.appendChild(field);
 
-    // ─── Check if game over ───
+    // ─── Game over ───
     if (state.winner) {
       const result = el('div', { style: 'text-align:center;padding:24px;' });
       const msg = state.winner === 'player' ? 'You win!' : 'You lose!';
@@ -190,11 +141,11 @@ export function renderBattle(container: HTMLElement) {
       playAgain.className = 'primary';
       playAgain.textContent = 'Play Again';
       playAgain.style.marginTop = '16px';
-      playAgain.onclick = () => { selected = []; state = null; logEntries = []; renderPickPhase(); };
+      playAgain.onclick = () => { state = null; logEntries = []; renderPickPhase(); };
       result.appendChild(playAgain);
       arena.appendChild(result);
     } else if (playerMon.current_hp <= 0) {
-      // ─── Player needs to switch (fainted) ───
+      // ─── Fainted — switch ───
       const switchSection = el('div', { style: 'margin-top:16px;' });
       switchSection.appendChild(el('h3', { style: 'font-size:14px;margin-bottom:8px;' }, 'Your Pokemon fainted! Choose a replacement:'));
       const switchRow = el('div', { class: 'inline-row' });
