@@ -1,6 +1,6 @@
 {
   "name": "@objectifthunes/pokemon",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "description": "The complete Pokemon game engine — data, sprites, sounds, battle system, evolution, leveling, and more. Pure TypeScript, zero dependencies, framework agnostic. All assets bundled.",
   "license": "MIT",
   "type": "module",
