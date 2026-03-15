@@ -1,0 +1,76 @@
+{
+  "name": "@objectifthunes/pokemon",
+  "version": "1.0.0",
+  "description": "The complete Pokemon game engine — data, sprites, sounds, battle system, evolution, leveling, and more. Pure TypeScript, zero dependencies, framework agnostic. All assets bundled.",
+  "license": "MIT",
+  "type": "module",
+  "main": "./dist/index.cjs",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "require": "./dist/index.cjs"
+    },
+    "./engine": {
+      "types": "./dist/engine/index.d.ts",
+      "import": "./dist/engine/index.js",
+      "require": "./dist/engine/index.cjs"
+    },
+    "./data": {
+      "types": "./dist/data/index.d.ts",
+      "import": "./dist/data/index.js",
+      "require": "./dist/data/index.cjs"
+    },
+    "./assets": {
+      "types": "./dist/assets/index.d.ts",
+      "import": "./dist/assets/index.js",
+      "require": "./dist/assets/index.cjs"
+    },
+    "./core": {
+      "types": "./dist/core/index.d.ts",
+      "import": "./dist/core/index.js",
+      "require": "./dist/core/index.cjs"
+    },
+    "./utils": {
+      "types": "./dist/utils/index.d.ts",
+      "import": "./dist/utils/index.js",
+      "require": "./dist/utils/index.cjs"
+    },
+    "./sprites/*": "./dist/assets/sprites/*"
+  },
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE"
+  ],
+  "sideEffects": false,
+  "keywords": [
+    "pokemon",
+    "game-engine",
+    "battle",
+    "pokedex",
+    "sprites",
+    "typescript",
+    "framework-agnostic",
+    "pure-logic"
+  ],
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "tsup": "^8.0.0",
+    "tsx": "^4.0.0",
+    "typescript": "^5.7.0",
+    "vitest": "^3.0.0"
+  },
+  "scripts": {
+    "build:lib": "tsup",
+    "build:assets": "mkdir -p dist/assets && cp -r src/assets/sprites dist/assets/",
+    "build": "pnpm build:lib && pnpm build:assets",
+    "dev": "tsup --watch",
+    "test": "vitest",
+    "test:run": "vitest run",
+    "typecheck": "tsc --noEmit",
+    "prepublishOnly": "pnpm build"
+  }
+}

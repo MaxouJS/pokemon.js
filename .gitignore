@@ -1,0 +1,7 @@
+node_modules
+dist
+*.tsbuildinfo
+
+# Demo
+demo/node_modules
+demo/dist
