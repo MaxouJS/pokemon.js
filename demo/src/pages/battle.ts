@@ -2,8 +2,8 @@ import {
   getPokemon, getMove, createBattleState,
   executeTurn, getAIAction, suggestMoves,
   TYPE_COLORS,
-} from 'pokemon.js';
-import type { BattleState, BattleAction, BattleLogEntry, PokemonTypeName, TeamMemberConfig } from 'pokemon.js';
+} from '@objectifthunes/pokemon';
+import type { BattleState, BattleAction, BattleLogEntry, PokemonTypeName, TeamMemberConfig } from '@objectifthunes/pokemon';
 import { el, fmtName, spriteUrl, typeBadge, hpColor } from '../helpers';
 
 const POOL = [

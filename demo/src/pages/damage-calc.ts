@@ -2,8 +2,8 @@ import {
   getPokemon, getAllPokemon, getMove, getMovesForPokemon,
   calculateDamage, createBattlePokemon, calcAllStats,
   PERFECT_IVS, ZERO_EVS, TYPE_COLORS,
-} from 'pokemon.js';
-import type { Pokemon, Move, PokemonTypeName, Weather } from 'pokemon.js';
+} from '@objectifthunes/pokemon';
+import type { Pokemon, Move, PokemonTypeName, Weather } from '@objectifthunes/pokemon';
 import { el, fmtName, spriteUrl, typeBadge } from '../helpers';
 
 export function renderDamageCalc(container: HTMLElement) {

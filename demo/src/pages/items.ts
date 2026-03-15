@@ -1,5 +1,5 @@
-import { getAllItems } from 'pokemon.js';
-import type { Item } from 'pokemon.js';
+import { getAllItems } from '@objectifthunes/pokemon';
+import type { Item } from '@objectifthunes/pokemon';
 import { el, fmtName, itemSpriteUrl } from '../helpers';
 
 const PER_PAGE = 20;

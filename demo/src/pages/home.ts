@@ -1,4 +1,4 @@
-import { getPokemon, POKEMON_COUNT, MOVES_COUNT, ABILITIES_COUNT, ITEMS_COUNT } from 'pokemon.js';
+import { getPokemon, POKEMON_COUNT, MOVES_COUNT, ABILITIES_COUNT, ITEMS_COUNT } from '@objectifthunes/pokemon';
 import { el, typeBadge, renderStatBars, spriteUrl } from '../helpers';
 
 export function renderHome(container: HTMLElement) {

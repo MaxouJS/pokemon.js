@@ -1,5 +1,5 @@
-import { searchPokemon, getPokemon } from 'pokemon.js';
-import type { Pokemon } from 'pokemon.js';
+import { searchPokemon, getPokemon } from '@objectifthunes/pokemon';
+import type { Pokemon } from '@objectifthunes/pokemon';
 import { el, typeBadge, fmtName, spriteUrl } from '../helpers';
 
 const MAX_TEAM = 6;

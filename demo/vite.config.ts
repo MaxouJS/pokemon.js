@@ -6,12 +6,12 @@ import { extname, join } from 'path';
 export default defineConfig({
   resolve: {
     alias: {
-      'pokemon.js/data': resolve(__dirname, '../src/data/index.ts'),
-      'pokemon.js/engine': resolve(__dirname, '../src/engine/index.ts'),
-      'pokemon.js/assets': resolve(__dirname, '../src/assets/index.ts'),
-      'pokemon.js/core': resolve(__dirname, '../src/core/index.ts'),
-      'pokemon.js/utils': resolve(__dirname, '../src/utils/index.ts'),
-      'pokemon.js': resolve(__dirname, '../src/index.ts'),
+      '@objectifthunes/pokemon/data': resolve(__dirname, '../src/data/index.ts'),
+      '@objectifthunes/pokemon/engine': resolve(__dirname, '../src/engine/index.ts'),
+      '@objectifthunes/pokemon/assets': resolve(__dirname, '../src/assets/index.ts'),
+      '@objectifthunes/pokemon/core': resolve(__dirname, '../src/core/index.ts'),
+      '@objectifthunes/pokemon/utils': resolve(__dirname, '../src/utils/index.ts'),
+      '@objectifthunes/pokemon': resolve(__dirname, '../src/index.ts'),
     },
   },
   server: {

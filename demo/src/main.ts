@@ -1,5 +1,5 @@
 import './styles.css';
-import { setAssetBasePath } from 'pokemon.js';
+import { setAssetBasePath } from '@objectifthunes/pokemon';
 import { renderHome } from './pages/home';
 import { renderPokedex } from './pages/pokedex';
 import { renderTypeChart } from './pages/types';

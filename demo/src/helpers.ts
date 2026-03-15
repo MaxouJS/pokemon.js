@@ -1,5 +1,5 @@
-import { TYPE_COLORS } from 'pokemon.js';
-import type { PokemonTypeName } from 'pokemon.js';
+import { TYPE_COLORS } from '@objectifthunes/pokemon';
+import type { PokemonTypeName } from '@objectifthunes/pokemon';
 
 /** Create an element with optional classes and children */
 export function el<K extends keyof HTMLElementTagNameMap>(

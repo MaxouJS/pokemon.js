@@ -1,5 +1,5 @@
-import { getAllPokemon, searchPokemon, getPokemonByType, ALL_TYPES } from 'pokemon.js';
-import type { Pokemon, PokemonTypeName } from 'pokemon.js';
+import { getAllPokemon, searchPokemon, getPokemonByType, ALL_TYPES } from '@objectifthunes/pokemon';
+import type { Pokemon, PokemonTypeName } from '@objectifthunes/pokemon';
 import { el, typeBadge, fmtName, renderStatBars, spriteUrl } from '../helpers';
 
 const PER_PAGE = 24;

@@ -1,5 +1,5 @@
-import { getAllTypes, getTypeEffectiveness, ALL_TYPES, TYPE_COLORS } from 'pokemon.js';
-import type { PokemonTypeName } from 'pokemon.js';
+import { getAllTypes, getTypeEffectiveness, ALL_TYPES, TYPE_COLORS } from '@objectifthunes/pokemon';
+import type { PokemonTypeName } from '@objectifthunes/pokemon';
 import { el, fmtName } from '../helpers';
 
 const CHART_TYPES = ALL_TYPES.filter(t => t !== 'shadow' && t !== 'stellar' && t !== 'unknown') as PokemonTypeName[];

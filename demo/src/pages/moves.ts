@@ -1,5 +1,5 @@
-import { getAllMoves, ALL_TYPES, TYPE_COLORS } from 'pokemon.js';
-import type { Move, PokemonTypeName } from 'pokemon.js';
+import { getAllMoves, ALL_TYPES, TYPE_COLORS } from '@objectifthunes/pokemon';
+import type { Move, PokemonTypeName } from '@objectifthunes/pokemon';
 import { el, fmtName } from '../helpers';
 
 const PER_PAGE = 20;
