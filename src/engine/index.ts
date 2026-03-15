@@ -90,6 +90,14 @@ export {
   canLearnMove,
   suggestMoves,
   validateMoveset,
+  getLearnset,
+  getLevelUpMoves,
+  getMovesAtLevel,
+  getMovesLearnedAtLevel,
+  getDefaultMoveset,
+  checkLevelUpMoves,
+  applyLevelUpMove,
+  replaceMove,
 } from './moves';
 
 // Capture mechanics
@@ -109,3 +117,28 @@ export {
   type BattleItemName,
   type ItemUseResult,
 } from './battle-items';
+
+// Abilities
+export {
+  getAbilityHandlers,
+  checkSturdy,
+  type AbilityHandlers,
+} from './abilities';
+
+// Held items
+export {
+  getHeldItemHandlers,
+  type HeldItemHandlers,
+} from './held-items';
+
+// Entry hazards
+export {
+  placeHazard,
+  applyEntryHazards,
+  removeHazards,
+} from './hazards';
+
+// Double battles
+export {
+  executeDoublesTurn,
+} from './doubles';

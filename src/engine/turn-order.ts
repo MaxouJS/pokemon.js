@@ -1,6 +1,8 @@
-import type { BattleAction, BattlePokemon } from '../types';
+import type { BattleAction, BattlePokemon, Weather } from '../types';
 import { calcAllStats, getEffectiveStat } from './stats';
 import { getStatusSpeedModifier } from './status';
+import { getAbilityHandlers } from './abilities';
+import { getHeldItemHandlers } from './held-items';
 
 /** The two sides that can act in a turn */
 export type Side = 'player' | 'opponent';
@@ -34,9 +36,10 @@ function getActionPriority(action: BattleAction, pokemon: BattlePokemon): number
 }
 
 /**
- * Calculate the effective speed of a Pokemon.
+ * Calculate the effective speed of a Pokemon,
+ * including ability and held item modifiers.
  */
-function getEffectiveSpeed(pokemon: BattlePokemon): number {
+function getEffectiveSpeed(pokemon: BattlePokemon, weather: Weather = 'none'): number {
   const stats = calcAllStats(
     pokemon.pokemon.stats,
     pokemon.ivs,
@@ -44,9 +47,25 @@ function getEffectiveSpeed(pokemon: BattlePokemon): number {
     pokemon.level,
     pokemon.nature,
   );
-  const baseSpeed = getEffectiveStat(stats.speed, pokemon.stat_stages.speed);
+  let speed = getEffectiveStat(stats.speed, pokemon.stat_stages.speed);
   const statusMod = getStatusSpeedModifier(pokemon.status);
-  return Math.floor(baseSpeed * statusMod);
+  speed = Math.floor(speed * statusMod);
+
+  // Ability speed modifier (Swift Swim, Chlorophyll, Sand Rush)
+  const abilityHandlers = getAbilityHandlers(pokemon.ability);
+  if (abilityHandlers?.onModifySpeed) {
+    speed = abilityHandlers.onModifySpeed(speed, pokemon, weather);
+  }
+
+  // Held item speed modifier (Choice Scarf, Iron Ball)
+  if (pokemon.held_item) {
+    const itemHandlers = getHeldItemHandlers(pokemon.held_item);
+    if (itemHandlers?.onModifySpeed) {
+      speed = itemHandlers.onModifySpeed(speed, pokemon);
+    }
+  }
+
+  return speed;
 }
 
 /**
@@ -59,6 +78,7 @@ export function resolveTurnOrder(
   opponentAction: BattleAction,
   playerPokemon: BattlePokemon,
   opponentPokemon: BattlePokemon,
+  weather: Weather = 'none',
 ): TurnOrderResult {
   const playerPriority = getActionPriority(playerAction, playerPokemon);
   const opponentPriority = getActionPriority(opponentAction, opponentPokemon);
@@ -70,8 +90,8 @@ export function resolveTurnOrder(
     return { first: 'opponent', second: 'player' };
   }
 
-  const playerSpeed = getEffectiveSpeed(playerPokemon);
-  const opponentSpeed = getEffectiveSpeed(opponentPokemon);
+  const playerSpeed = getEffectiveSpeed(playerPokemon, weather);
+  const opponentSpeed = getEffectiveSpeed(opponentPokemon, weather);
 
   if (playerSpeed > opponentSpeed) {
     return { first: 'player', second: 'opponent' };

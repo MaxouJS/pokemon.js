@@ -13,16 +13,39 @@ const POOL = [
 
 const LEVEL = 50;
 
+// Competitive items for the demo Pokemon
+const ITEMS: Record<string, string> = {
+  charizard: 'life-orb',
+  blastoise: 'leftovers',
+  venusaur: 'black-sludge',
+  pikachu: 'choice-specs',
+  gengar: 'choice-specs',
+  alakazam: 'life-orb',
+  dragonite: 'lum-berry',
+  snorlax: 'leftovers',
+  scizor: 'choice-band',
+  tyranitar: 'choice-scarf',
+  garchomp: 'life-orb',
+  lucario: 'focus-sash',
+};
+
 function buildConfig(name: string): TeamMemberConfig {
   const p = getPokemon(name)!;
   const moves = suggestMoves(p, 4).map(m => m.name);
-  return { pokemon_id: p.id, level: LEVEL, moves };
+  const ability = p.abilities[0]?.name ?? 'unknown';
+  return {
+    pokemon_id: p.id,
+    level: LEVEL,
+    moves,
+    ability,
+    held_item: ITEMS[name] ?? null,
+  };
 }
 
 export function renderBattle(container: HTMLElement) {
   const header = el('div', { class: 'page-header' });
   header.appendChild(el('h2', {}, 'Battle Demo'));
-  header.appendChild(el('p', {}, "Pick your team and fight the AI in a full turn-based Pokemon battle powered by the pokemon.js battle engine."));
+  header.appendChild(el('p', {}, "Pick your team and fight the AI. Abilities, held items, entry hazards, and screens are all active."));
   container.appendChild(header);
 
   let selected: string[] = [];
@@ -38,16 +61,21 @@ export function renderBattle(container: HTMLElement) {
 
     const section = el('div');
     section.appendChild(el('h3', { style: 'margin-bottom:4px;' }, 'Your Team (pick 1-3)'));
-    section.appendChild(el('p', { class: 'desc' }, "Click to select your team members. The opponent's team will be randomly chosen."));
+    section.appendChild(el('p', { class: 'desc' }, "Click to select your team members. Each Pokemon has its ability and a held item. The opponent's team will be randomly chosen."));
 
     const picker = el('div', { class: 'team-picker' });
     for (const name of POOL) {
       const p = getPokemon(name)!;
+      const ability = p.abilities[0]?.name ?? '';
+      const item = ITEMS[name];
       const btn = document.createElement('button');
       btn.className = `team-pick-btn ${selected.includes(name) ? 'selected' : ''}`;
       const img = el('img', { src: spriteUrl(p.id), alt: name, style: 'width:40px;height:40px;' });
       btn.appendChild(img);
-      btn.appendChild(document.createTextNode(fmtName(name)));
+      const info = el('div', { style: 'display:flex;flex-direction:column;align-items:start;' });
+      info.appendChild(el('span', {}, fmtName(name)));
+      info.appendChild(el('span', { style: 'font-size:9px;color:#888;' }, `${fmtName(ability)} \u00B7 ${fmtName(item)}`));
+      btn.appendChild(info);
       btn.onclick = () => {
         const idx = selected.indexOf(name);
         if (idx >= 0) selected.splice(idx, 1);
@@ -91,6 +119,23 @@ export function renderBattle(container: HTMLElement) {
     const playerMon = state.player.team[state.player.active_index];
     const opponentMon = state.opponent.team[state.opponent.active_index];
 
+    // ─── Field status bar (weather, screens, hazards) ───
+    const fieldStatus = el('div', { style: 'display:flex;gap:8px;flex-wrap:wrap;justify-content:center;margin-bottom:12px;' });
+    if (state.weather.type !== 'none') {
+      const weatherColors: Record<string, string> = { sun: '#ffd93d', rain: '#56b6c2', sandstorm: '#c8a96e', hail: '#a8d8ea' };
+      fieldStatus.appendChild(el('span', { style: `font-size:10px;padding:2px 8px;border-radius:10px;background:${weatherColors[state.weather.type] || '#555'};color:#111;font-weight:700;` }, `${fmtName(state.weather.type)} (${state.weather.turns_remaining}t)`));
+    }
+    for (const [side, label] of [['player', 'Your'], ['opponent', 'Opp']] as const) {
+      const s = state[side];
+      if (s.reflect_turns > 0) fieldStatus.appendChild(el('span', { style: 'font-size:10px;padding:2px 8px;border-radius:10px;background:#e8a87c;color:#111;font-weight:700;' }, `${label} Reflect (${s.reflect_turns}t)`));
+      if (s.light_screen_turns > 0) fieldStatus.appendChild(el('span', { style: 'font-size:10px;padding:2px 8px;border-radius:10px;background:#95e1d3;color:#111;font-weight:700;' }, `${label} L.Screen (${s.light_screen_turns}t)`));
+      for (const h of s.entry_hazards) {
+        const hazardColors: Record<string, string> = { 'stealth-rock': '#c8a96e', 'spikes': '#888', 'toxic-spikes': '#b06ab3', 'sticky-web': '#a0a0a0' };
+        fieldStatus.appendChild(el('span', { style: `font-size:10px;padding:2px 8px;border-radius:10px;background:${hazardColors[h.type] || '#555'};color:#111;font-weight:700;` }, `${label} ${fmtName(h.type)}${h.layers > 1 ? ` x${h.layers}` : ''}`));
+      }
+    }
+    if (fieldStatus.childNodes.length > 0) arena.appendChild(fieldStatus);
+
     // ─── Battle Field ───
     const field = el('div', { class: 'battle-field' });
 
@@ -102,6 +147,13 @@ export function renderBattle(container: HTMLElement) {
     const pTypes = el('div', { style: 'display:flex;gap:3px;justify-content:center;margin:4px 0;' });
     for (const t of playerMon.pokemon.types) pTypes.appendChild(typeBadge(t));
     playerSide.appendChild(pTypes);
+
+    // Ability + item info
+    playerSide.appendChild(el('div', { style: 'font-size:9px;color:#888;margin-bottom:4px;' }, `${fmtName(playerMon.ability)}${playerMon.held_item ? ' \u00B7 ' + fmtName(playerMon.held_item) : ''}`));
+    if (playerMon.status) {
+      const statusColors: Record<string, string> = { burn: '#e06c75', poison: '#b06ab3', 'bad-poison': '#9b59b6', paralysis: '#ffd93d', sleep: '#888', freeze: '#56b6c2' };
+      playerSide.appendChild(el('span', { style: `font-size:9px;padding:1px 6px;border-radius:8px;background:${statusColors[playerMon.status] || '#555'};color:#fff;font-weight:700;` }, playerMon.status.toUpperCase()));
+    }
 
     const pHpContainer = el('div', { class: 'hp-bar-container' });
     const pHpBg = el('div', { class: 'hp-bar-bg' });
@@ -125,6 +177,12 @@ export function renderBattle(container: HTMLElement) {
     const oTypes = el('div', { style: 'display:flex;gap:3px;justify-content:center;margin:4px 0;' });
     for (const t of opponentMon.pokemon.types) oTypes.appendChild(typeBadge(t));
     oppSide.appendChild(oTypes);
+
+    oppSide.appendChild(el('div', { style: 'font-size:9px;color:#888;margin-bottom:4px;' }, `${fmtName(opponentMon.ability)}${opponentMon.held_item ? ' \u00B7 ' + fmtName(opponentMon.held_item) : ''}`));
+    if (opponentMon.status) {
+      const statusColors: Record<string, string> = { burn: '#e06c75', poison: '#b06ab3', 'bad-poison': '#9b59b6', paralysis: '#ffd93d', sleep: '#888', freeze: '#56b6c2' };
+      oppSide.appendChild(el('span', { style: `font-size:9px;padding:1px 6px;border-radius:8px;background:${statusColors[opponentMon.status] || '#555'};color:#fff;font-weight:700;` }, opponentMon.status.toUpperCase()));
+    }
 
     const oHpContainer = el('div', { class: 'hp-bar-container' });
     const oHpBg = el('div', { class: 'hp-bar-bg' });
@@ -174,11 +232,13 @@ export function renderBattle(container: HTMLElement) {
       const movesSection = el('div', { class: 'battle-moves' });
       for (let i = 0; i < playerMon.moves.length; i++) {
         const move = playerMon.moves[i];
+        const pp = playerMon.pp[move.name] ?? 0;
         const color = TYPE_COLORS[move.type as PokemonTypeName] || '#555';
         const btn = document.createElement('button');
         btn.className = 'battle-move-btn';
         btn.style.background = color;
-        btn.innerHTML = `${fmtName(move.name)}<div class="move-info">${move.type} \u00B7 ${move.power || '\u2014'} pow \u00B7 ${move.damage_class}</div>`;
+        btn.disabled = pp <= 0;
+        btn.innerHTML = `${fmtName(move.name)}<div class="move-info">${move.type} \u00B7 ${move.power || '\u2014'} pow \u00B7 ${pp} PP</div>`;
         btn.onclick = () => doMove(i);
         movesSection.appendChild(btn);
       }
@@ -213,7 +273,11 @@ export function renderBattle(container: HTMLElement) {
         const row = el('div', { style: 'display:flex;align-items:center;gap:6px;margin-bottom:4px;' });
         const mini = el('img', { src: spriteUrl(pm.pokemon.id), style: 'width:24px;height:24px;image-rendering:pixelated;' });
         row.appendChild(mini);
-        row.appendChild(el('span', { style: `font-size:11px;${pm.current_hp <= 0 ? 'opacity:0.3;text-decoration:line-through;' : ''}` }, fmtName(pm.pokemon.name)));
+        const nameSpan = el('span', { style: `font-size:11px;${pm.current_hp <= 0 ? 'opacity:0.3;text-decoration:line-through;' : ''}` }, fmtName(pm.pokemon.name));
+        row.appendChild(nameSpan);
+        if (pm.held_item) {
+          row.appendChild(el('span', { style: 'font-size:9px;color:#666;' }, fmtName(pm.held_item)));
+        }
         const miniBar = el('div', { style: 'flex:1;height:4px;background:#1e1e2e;border-radius:2px;overflow:hidden;' });
         const miniPct = Math.max(0, pm.current_hp / pm.max_hp);
         const miniFill = el('div', { style: `height:100%;width:${miniPct * 100}%;background:${hpColor(miniPct)};border-radius:2px;` });

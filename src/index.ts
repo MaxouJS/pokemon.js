@@ -159,6 +159,14 @@ export {
   canLearnMove,
   suggestMoves,
   validateMoveset,
+  getLearnset,
+  getLevelUpMoves,
+  getMovesAtLevel,
+  getMovesLearnedAtLevel,
+  getDefaultMoveset,
+  checkLevelUpMoves,
+  applyLevelUpMove,
+  replaceMove,
 } from './engine/moves';
 
 // Capture
@@ -172,6 +180,20 @@ export type { PokeballType, CaptureContext, CaptureResult } from './engine/captu
 // Battle Items
 export { useBattleItem, throwPokeball } from './engine/battle-items';
 export type { BattleItemName, ItemUseResult } from './engine/battle-items';
+
+// Abilities
+export { getAbilityHandlers, checkSturdy } from './engine/abilities';
+export type { AbilityHandlers } from './engine/abilities';
+
+// Held Items (battle effects)
+export { getHeldItemHandlers } from './engine/held-items';
+export type { HeldItemHandlers } from './engine/held-items';
+
+// Entry Hazards
+export { placeHazard, applyEntryHazards, removeHazards } from './engine/hazards';
+
+// Double Battles
+export { executeDoublesTurn } from './engine/doubles';
 
 // ─── Core Classes ────────────────────────────────────────────
 export { PokemonInstance } from './core/PokemonInstance';

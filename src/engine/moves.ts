@@ -1,8 +1,9 @@
-import type { Move, Pokemon } from '../types';
+import type { Move, Pokemon, LearnsetEntry } from '../types';
 import { getMove, getMovesForPokemon } from '../data';
+import { getLearnset, getLevelUpMoves, getMovesAtLevel, getMovesLearnedAtLevel, getDefaultMoveset } from '../data/learnsets';
 
 /**
- * Get all moves a Pokemon can learn.
+ * Get all moves a Pokemon can learn (flat list).
  */
 export function getLearnableMoves(pokemonIdOrName: number | string): Move[] {
   return getMovesForPokemon(pokemonIdOrName);
@@ -121,4 +122,58 @@ export function validateMoveset(
   }
 
   return { valid: errors.length === 0, errors };
+}
+
+// ─── Level-up learnset functions ────────────────────────────────────
+
+/**
+ * Get the full learnset for a Pokemon (all methods).
+ */
+export { getLearnset, getLevelUpMoves, getMovesAtLevel, getMovesLearnedAtLevel, getDefaultMoveset };
+
+/**
+ * Check if a Pokemon should learn any new moves upon reaching a given level.
+ * Returns the list of Move objects that should be offered to learn.
+ */
+export function checkLevelUpMoves(pokemon: Pokemon, level: number): Move[] {
+  const entries = getMovesLearnedAtLevel(pokemon, level);
+  return entries
+    .map(e => getMove(e.move))
+    .filter((m): m is Move => m !== undefined);
+}
+
+/**
+ * Apply level-up move learning to a moveset.
+ * If the Pokemon has fewer than 4 moves, the new move is added.
+ * If it has 4 moves, returns the candidate (caller must handle replacement UI).
+ */
+export function applyLevelUpMove(
+  currentMoves: string[],
+  newMoveName: string,
+): { moves: string[]; replaced: string | null; needsChoice: boolean } {
+  if (currentMoves.length < 4) {
+    return {
+      moves: [...currentMoves, newMoveName],
+      replaced: null,
+      needsChoice: false,
+    };
+  }
+
+  // 4 moves already — needs player choice
+  return {
+    moves: currentMoves,
+    replaced: null,
+    needsChoice: true,
+  };
+}
+
+/**
+ * Replace a move in a moveset with a new move.
+ */
+export function replaceMove(
+  currentMoves: string[],
+  oldMoveName: string,
+  newMoveName: string,
+): string[] {
+  return currentMoves.map(m => m === oldMoveName ? newMoveName : m);
 }

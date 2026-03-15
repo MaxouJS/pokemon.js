@@ -2,6 +2,9 @@ import type { BaseStats, EVs, IVs, NatureName, StatStages, StatusCondition, Terr
 import type { Move } from './moves';
 import type { Pokemon, PokemonSpecies } from './pokemon';
 
+/** Battle format */
+export type BattleFormat = 'singles' | 'doubles';
+
 /** A Pokemon instance configured for battle */
 export interface BattlePokemon {
   pokemon: Pokemon;
@@ -25,7 +28,10 @@ export interface BattlePokemon {
 
 /** One side of a battle */
 export interface BattleSide {
+  /** Primary active Pokemon index (slot 0 in doubles). */
   active_index: number;
+  /** Active Pokemon indices. Length 1 in singles, up to 2 in doubles. */
+  active_indices: number[];
   team: BattlePokemon[];
   volatile: Set<VolatileStatus>;
   volatile_data: Record<string, number>;
@@ -44,6 +50,7 @@ export interface EntryHazard {
 /** The complete state of a battle */
 export interface BattleState {
   turn: number;
+  format: BattleFormat;
   player: BattleSide;
   opponent: BattleSide;
   weather: { type: Weather; turns_remaining: number };
@@ -63,8 +70,8 @@ export type BattlePhase =
 
 /** A player's chosen action for the turn */
 export type BattleAction =
-  | { type: 'move'; move_index: number }
-  | { type: 'switch'; pokemon_index: number }
+  | { type: 'move'; move_index: number; /** Slot index of the acting Pokemon in doubles (0 or 1). */ slot?: number; /** Target: 'opponent-0', 'opponent-1', 'ally', 'self', 'all-opponents', 'all-adjacent' */ target?: string }
+  | { type: 'switch'; pokemon_index: number; /** Slot being replaced in doubles. */ slot?: number }
   | { type: 'item'; item: string; target_index: number }
   | { type: 'flee' };
 
@@ -90,6 +97,7 @@ export interface BattleLogEntry {
 
 /** Options for starting a battle */
 export interface BattleOptions {
+  format?: BattleFormat;
   weather?: Weather;
   terrain?: Terrain;
   ai_difficulty?: 'random' | 'greedy' | 'smart';

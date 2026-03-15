@@ -25,6 +25,9 @@ import {
 import { resolveTurnOrder, type Side } from './turn-order';
 import { useBattleItem, throwPokeball, type BattleItemName } from './battle-items';
 import type { PokeballType, CaptureContext } from './capture';
+import { getAbilityHandlers, checkSturdy } from './abilities';
+import { getHeldItemHandlers } from './held-items';
+import { placeHazard, applyEntryHazards, removeHazards } from './hazards';
 
 /**
  * Create a BattlePokemon from a TeamMemberConfig.
@@ -84,9 +87,11 @@ export function createBattlePokemon(config: TeamMemberConfig): BattlePokemon {
   };
 }
 
-function createBattleSide(team: BattlePokemon[]): BattleSide {
+function createBattleSide(team: BattlePokemon[], format: 'singles' | 'doubles' = 'singles'): BattleSide {
+  const activeIndices = format === 'doubles' && team.length >= 2 ? [0, 1] : [0];
   return {
-    active_index: 0,
+    active_index: activeIndices[0],
+    active_indices: activeIndices,
     team,
     volatile: new Set(),
     volatile_data: {},
@@ -105,8 +110,12 @@ export function createBattleState(
   opponentTeam: TeamMemberConfig[],
   options?: BattleOptions,
 ): BattleState {
+  const format = options?.format ?? 'singles';
   if (playerTeam.length === 0 || opponentTeam.length === 0) {
     throw new Error('Both teams must have at least one Pokemon');
+  }
+  if (format === 'doubles' && (playerTeam.length < 2 || opponentTeam.length < 2)) {
+    throw new Error('Both teams must have at least two Pokemon for doubles');
   }
 
   const playerPokemon = playerTeam.map(createBattlePokemon);
@@ -114,8 +123,9 @@ export function createBattleState(
 
   return {
     turn: 0,
-    player: createBattleSide(playerPokemon),
-    opponent: createBattleSide(opponentPokemon),
+    format,
+    player: createBattleSide(playerPokemon, format),
+    opponent: createBattleSide(opponentPokemon, format),
     weather: {
       type: options?.weather ?? 'none',
       turns_remaining: options?.weather && options.weather !== 'none' ? 5 : 0,
@@ -150,6 +160,7 @@ function cloneState(state: BattleState): BattleState {
 function cloneSide(side: BattleSide): BattleSide {
   return {
     ...side,
+    active_indices: [...side.active_indices],
     team: side.team.map(clonePokemon),
     volatile: new Set(side.volatile),
     volatile_data: { ...side.volatile_data },
@@ -189,11 +200,81 @@ function applyHealing(pokemon: BattlePokemon, amount: number): void {
   pokemon.current_hp = Math.min(pokemon.max_hp, pokemon.current_hp + amount);
 }
 
+/**
+ * Try to apply a status condition, checking ability immunities and berry cures.
+ */
+function tryApplyStatus(
+  target: BattlePokemon,
+  status: StatusCondition,
+  log: BattleLogEntry[],
+  turn: number,
+): boolean {
+  if (target.status !== null) return false;
+
+  // Ability status immunity (Immunity, Limber, Insomnia, etc.)
+  const abilityHandlers = getAbilityHandlers(target.ability);
+  if (abilityHandlers?.onStatusAttempt) {
+    if (!abilityHandlers.onStatusAttempt(status, target)) {
+      log.push(logEntry(turn, `${target.nickname}'s ${target.ability} prevents ${status}!`, 'ability'));
+      return false;
+    }
+  }
+
+  target.status = status;
+  target.status_turns = 0;
+
+  const statusNames: Record<string, string> = {
+    'burn': 'burned',
+    'freeze': 'frozen',
+    'paralysis': 'paralyzed',
+    'poison': 'poisoned',
+    'bad-poison': 'badly poisoned',
+    'sleep': 'put to sleep',
+  };
+  log.push(logEntry(turn, `${target.nickname} was ${statusNames[status] ?? status}!`, 'status'));
+
+  // Check status-cure berry
+  if (target.held_item) {
+    const itemHandlers = getHeldItemHandlers(target.held_item);
+    if (itemHandlers?.onStatusReceived?.(target, status)) {
+      log.push(logEntry(turn, `${target.nickname}'s ${target.held_item} cured its ${status}!`, 'item'));
+    }
+  }
+
+  return true;
+}
+
+/**
+ * Trigger HP-threshold item checks (Sitrus Berry, Oran Berry).
+ */
+function checkHpItems(pokemon: BattlePokemon, log: BattleLogEntry[], turn: number): void {
+  if (!pokemon.held_item || pokemon.is_fainted) return;
+  const itemHandlers = getHeldItemHandlers(pokemon.held_item);
+  itemHandlers?.onHpChanged?.(pokemon, log, turn);
+}
+
+// ─── Hazard & screen move names ──────────────────────────────
+
+const HAZARD_MOVES: Record<string, 'stealth-rock' | 'spikes' | 'toxic-spikes' | 'sticky-web'> = {
+  'stealth-rock': 'stealth-rock',
+  'spikes': 'spikes',
+  'toxic-spikes': 'toxic-spikes',
+  'sticky-web': 'sticky-web',
+};
+
+const SCREEN_MOVES: Record<string, 'reflect' | 'light-screen'> = {
+  'reflect': 'reflect',
+  'light-screen': 'light-screen',
+};
+
+const HAZARD_CLEAR_MOVES = new Set(['rapid-spin', 'defog']);
+
 // ─── Action execution ────────────────────────────────────────
 
 function executeSwitch(
   state: BattleState,
   side: BattleSide,
+  opponentSide: BattleSide,
   sideLabel: string,
   pokemonIndex: number,
   log: BattleLogEntry[],
@@ -209,6 +290,17 @@ function executeSwitch(
 
   log.push(logEntry(state.turn, `${sideLabel} withdrew ${oldPokemon.nickname}!`, 'switch'));
   log.push(logEntry(state.turn, `${sideLabel} sent out ${newPokemon.nickname}!`, 'switch'));
+
+  // Apply entry hazards on switch-in
+  applyEntryHazards(side, newPokemon, log, state.turn);
+
+  if (newPokemon.is_fainted) return;
+
+  // Ability switch-in effects (weather setters, Intimidate, etc.)
+  const abilityHandlers = getAbilityHandlers(newPokemon.ability);
+  if (abilityHandlers?.onSwitchIn) {
+    abilityHandlers.onSwitchIn(newPokemon, side, opponentSide, state, log);
+  }
 }
 
 function executeMove(
@@ -276,14 +368,41 @@ function executeMove(
     return;
   }
 
+  // ─── Handle damaging moves ───
   if (move.damage_class !== 'status' && move.power !== null && move.power > 0) {
-    const isCritical = checkCritical(move, attacker);
+    // Check type immunity via defender's ability
+    const defAbility = getAbilityHandlers(defender.ability);
+    if (defAbility?.onTypeImmunity?.(move.type, defender)) {
+      log.push(logEntry(state.turn, `It doesn't affect ${defender.nickname}... (${defender.ability})`, 'ability'));
+      return;
+    }
+
+    const isCritical = checkCritical(move, attacker, defender);
     const result = calculateDamage(attacker, defender, move, {
       weather: state.weather.type,
       critical_override: isCritical,
+      attacker_side: attackerSide,
+      defender_side: defenderSide,
     });
 
-    applyDamage(defender, result.damage);
+    let finalDamage = result.damage;
+
+    // Sturdy: survive at 1 HP from full
+    finalDamage = checkSturdy(defender, finalDamage);
+
+    // Defender held item onTakeDamage (Focus Sash, Focus Band)
+    if (defender.held_item) {
+      const defItem = getHeldItemHandlers(defender.held_item);
+      if (defItem?.onTakeDamage) {
+        const takeResult = defItem.onTakeDamage(finalDamage, defender);
+        finalDamage = takeResult.damage;
+        if (takeResult.consumed) {
+          log.push(logEntry(state.turn, `${defender.nickname} hung on using its ${defender.held_item}!`, 'item'));
+        }
+      }
+    }
+
+    applyDamage(defender, finalDamage);
 
     if (result.critical) {
       log.push(logEntry(state.turn, 'A critical hit!', 'damage'));
@@ -293,19 +412,30 @@ function executeMove(
     }
     log.push(logEntry(
       state.turn,
-      `${defender.nickname} took ${result.damage} damage! (${defender.current_hp}/${defender.max_hp} HP)`,
+      `${defender.nickname} took ${finalDamage} damage! (${defender.current_hp}/${defender.max_hp} HP)`,
       'damage',
     ));
+
+    // Attacker held item after damage dealt (Life Orb recoil, Shell Bell heal)
+    if (attacker.held_item && finalDamage > 0) {
+      const atkItem = getHeldItemHandlers(attacker.held_item);
+      atkItem?.onAfterDamageDealt?.(attacker, finalDamage, log, state.turn);
+    }
+
+    // Check HP-threshold items for defender (Sitrus Berry, Oran Berry)
+    checkHpItems(defender, log, state.turn);
 
     if (defender.is_fainted) {
       log.push(logEntry(state.turn, `${defender.nickname} fainted!`, 'faint'));
     }
 
+    // Drain moves
     if (move.meta.drain > 0 && result.damage > 0) {
       const healAmount = Math.max(1, Math.floor(result.damage * move.meta.drain / 100));
       applyHealing(attacker, healAmount);
       log.push(logEntry(state.turn, `${attacker.nickname} drained ${healAmount} HP!`, 'info'));
     }
+    // Recoil moves
     if (move.meta.drain < 0 && result.damage > 0) {
       const recoilAmount = Math.max(1, Math.floor(result.damage * Math.abs(move.meta.drain) / 100));
       applyDamage(attacker, recoilAmount);
@@ -315,6 +445,7 @@ function executeMove(
       }
     }
 
+    // Flinch chance
     if (move.meta.flinch_chance > 0 && !defender.is_fainted) {
       if (Math.random() * 100 < move.meta.flinch_chance) {
         defenderSide.volatile.add('flinch');
@@ -322,12 +453,69 @@ function executeMove(
     }
   }
 
+  // ─── Handle screen-setting moves ───
+  if (SCREEN_MOVES[move.name]) {
+    const screen = SCREEN_MOVES[move.name];
+    if (screen === 'reflect') {
+      if (attackerSide.reflect_turns > 0) {
+        log.push(logEntry(state.turn, 'But it failed! Reflect is already active!', 'info'));
+      } else {
+        attackerSide.reflect_turns = 5;
+        log.push(logEntry(state.turn, `Reflect raised ${attackerLabel}'s team's Defense!`, 'info'));
+      }
+    } else if (screen === 'light-screen') {
+      if (attackerSide.light_screen_turns > 0) {
+        log.push(logEntry(state.turn, 'But it failed! Light Screen is already active!', 'info'));
+      } else {
+        attackerSide.light_screen_turns = 5;
+        log.push(logEntry(state.turn, `Light Screen raised ${attackerLabel}'s team's Sp. Def!`, 'info'));
+      }
+    }
+  }
+
+  // ─── Handle hazard-placing moves ───
+  if (HAZARD_MOVES[move.name]) {
+    placeHazard(defenderSide, HAZARD_MOVES[move.name], log, state.turn);
+  }
+
+  // ─── Handle hazard removal moves ───
+  if (HAZARD_CLEAR_MOVES.has(move.name)) {
+    if (move.name === 'rapid-spin') {
+      // Rapid Spin: clears own side's hazards
+      if (attackerSide.entry_hazards.length > 0) {
+        removeHazards(attackerSide, log, state.turn);
+      }
+      // Also raises user's Speed by 1 (Gen VIII+)
+      attacker.stat_stages.speed = Math.min(6, attacker.stat_stages.speed + 1);
+      log.push(logEntry(state.turn, `${attacker.nickname}'s Speed rose!`, 'info'));
+    } else if (move.name === 'defog') {
+      // Defog: clears both sides' hazards + screens on opponent side
+      if (defenderSide.entry_hazards.length > 0) {
+        removeHazards(defenderSide, log, state.turn);
+      }
+      if (attackerSide.entry_hazards.length > 0) {
+        removeHazards(attackerSide, log, state.turn);
+      }
+      // Remove screens on opponent side
+      if (defenderSide.reflect_turns > 0) {
+        defenderSide.reflect_turns = 0;
+        log.push(logEntry(state.turn, "The opposing team's Reflect wore off!", 'info'));
+      }
+      if (defenderSide.light_screen_turns > 0) {
+        defenderSide.light_screen_turns = 0;
+        log.push(logEntry(state.turn, "The opposing team's Light Screen wore off!", 'info'));
+      }
+    }
+  }
+
+  // ─── Self-healing moves ───
   if (move.meta.healing > 0 && !attacker.is_fainted) {
     const healAmount = Math.max(1, Math.floor(attacker.max_hp * move.meta.healing / 100));
     applyHealing(attacker, healAmount);
     log.push(logEntry(state.turn, `${attacker.nickname} restored ${healAmount} HP!`, 'info'));
   }
 
+  // ─── Stat changes ───
   if (move.stat_changes.length > 0 && !attacker.is_fainted) {
     const chance = move.meta.stat_chance > 0 ? move.meta.stat_chance : 100;
     if (Math.random() * 100 < chance) {
@@ -362,6 +550,7 @@ function executeMove(
     }
   }
 
+  // ─── Status ailment ───
   if (
     move.meta.ailment !== 'none' &&
     move.meta.ailment !== '' &&
@@ -373,21 +562,7 @@ function executeMove(
       const ailment = move.meta.ailment as string;
       const validStatuses = ['burn', 'freeze', 'paralysis', 'poison', 'bad-poison', 'sleep'];
       if (validStatuses.includes(ailment)) {
-        defender.status = ailment as StatusCondition;
-        defender.status_turns = 0;
-        const statusNames: Record<string, string> = {
-          'burn': 'burned',
-          'freeze': 'frozen',
-          'paralysis': 'paralyzed',
-          'poison': 'poisoned',
-          'bad-poison': 'badly poisoned',
-          'sleep': 'put to sleep',
-        };
-        log.push(logEntry(
-          state.turn,
-          `${defender.nickname} was ${statusNames[ailment] ?? ailment}!`,
-          'status',
-        ));
+        tryApplyStatus(defender, ailment as StatusCondition, log, state.turn);
       }
     }
   }
@@ -409,14 +584,12 @@ function executeAction(
       executeMove(state, attackerSide, defenderSide, attackerLabel, defenderLabel, action.move_index, log);
       break;
     case 'switch':
-      executeSwitch(state, attackerSide, attackerLabel, action.pokemon_index, log);
+      executeSwitch(state, attackerSide, defenderSide, attackerLabel, action.pokemon_index, log);
       break;
     case 'item': {
-      // Item actions carry the item name and optionally a target team index
       const itemAction = action as BattleAction & { item: string; target_index: number };
       const itemName = itemAction.item;
 
-      // Check if it's a pokeball throw (wild battle capture)
       const pokeballTypes = [
         'poke-ball', 'great-ball', 'ultra-ball', 'master-ball', 'safari-ball',
         'net-ball', 'dive-ball', 'nest-ball', 'repeat-ball', 'timer-ball',
@@ -435,7 +608,6 @@ function executeAction(
           state.winner = 'player';
         }
       } else {
-        // Regular battle item (potion, status cure, etc.)
         const targetIndex = itemAction.target_index ?? attackerSide.active_index;
         const targetPokemon = attackerSide.team[targetIndex];
         if (targetPokemon) {
@@ -454,11 +626,21 @@ function executeAction(
 }
 
 function applyEndOfTurnEffects(state: BattleState, log: BattleLogEntry[]): void {
+  // Weather chip damage
   if (state.weather.type !== 'none') {
     for (const side of [state.player, state.opponent]) {
       const pokemon = getActivePokemon(side);
       if (!pokemon.is_fainted) {
-        const weatherDmg = applyEndOfTurnWeather(state.weather.type, pokemon);
+        let weatherDmg = applyEndOfTurnWeather(state.weather.type, pokemon);
+
+        // Ability weather damage immunity (Magic Guard, Overcoat, Ice Body, Rain Dish)
+        if (weatherDmg > 0) {
+          const abilityHandlers = getAbilityHandlers(pokemon.ability);
+          if (abilityHandlers?.onWeatherDamage) {
+            weatherDmg = abilityHandlers.onWeatherDamage(weatherDmg, pokemon, state.weather.type);
+          }
+        }
+
         if (weatherDmg > 0) {
           applyDamage(pokemon, weatherDmg);
           const weatherName = state.weather.type === 'sandstorm' ? 'the sandstorm' : 'the hail';
@@ -483,32 +665,61 @@ function applyEndOfTurnEffects(state: BattleState, log: BattleLogEntry[]): void 
     }
   }
 
+  // Status damage (burn, poison, bad-poison)
   for (const side of [state.player, state.opponent]) {
     const pokemon = getActivePokemon(side);
     if (!pokemon.is_fainted && pokemon.status) {
       pokemon.status_turns += 1;
 
-      const statusDmg = applyStatusDamage(pokemon);
-      if (statusDmg > 0) {
-        applyDamage(pokemon, statusDmg);
-        const statusMsg = pokemon.status === 'burn' ? 'hurt by its burn'
-          : pokemon.status === 'poison' ? 'hurt by poison'
-          : pokemon.status === 'bad-poison' ? 'hurt by poison'
-          : '';
-        if (statusMsg) {
-          log.push(logEntry(
-            state.turn,
-            `${pokemon.nickname} was ${statusMsg}! (${statusDmg} damage)`,
-            'status',
-          ));
-        }
-        if (pokemon.is_fainted) {
-          log.push(logEntry(state.turn, `${pokemon.nickname} fainted!`, 'faint'));
+      // Poison Heal: heal instead of taking poison damage
+      const abilityHandlers = getAbilityHandlers(pokemon.ability);
+      const isPoisonHeal =
+        abilityHandlers?.onEndOfTurn &&
+        pokemon.ability.toLowerCase() === 'poison-heal' &&
+        (pokemon.status === 'poison' || pokemon.status === 'bad-poison');
+
+      if (!isPoisonHeal) {
+        const statusDmg = applyStatusDamage(pokemon);
+        if (statusDmg > 0) {
+          applyDamage(pokemon, statusDmg);
+          const statusMsg = pokemon.status === 'burn' ? 'hurt by its burn'
+            : pokemon.status === 'poison' ? 'hurt by poison'
+            : pokemon.status === 'bad-poison' ? 'hurt by poison'
+            : '';
+          if (statusMsg) {
+            log.push(logEntry(
+              state.turn,
+              `${pokemon.nickname} was ${statusMsg}! (${statusDmg} damage)`,
+              'status',
+            ));
+          }
+          if (pokemon.is_fainted) {
+            log.push(logEntry(state.turn, `${pokemon.nickname} fainted!`, 'faint'));
+          }
         }
       }
     }
   }
 
+  // Ability end-of-turn effects (Speed Boost, Poison Heal, Ice Body, Rain Dish)
+  for (const side of [state.player, state.opponent]) {
+    const pokemon = getActivePokemon(side);
+    if (!pokemon.is_fainted) {
+      const abilityHandlers = getAbilityHandlers(pokemon.ability);
+      abilityHandlers?.onEndOfTurn?.(pokemon, side, state, log);
+    }
+  }
+
+  // Held item end-of-turn effects (Leftovers, Black Sludge)
+  for (const side of [state.player, state.opponent]) {
+    const pokemon = getActivePokemon(side);
+    if (!pokemon.is_fainted && pokemon.held_item) {
+      const itemHandlers = getHeldItemHandlers(pokemon.held_item);
+      itemHandlers?.onEndOfTurn?.(pokemon, log, state.turn);
+    }
+  }
+
+  // Decrement screen / tailwind timers
   for (const side of [state.player, state.opponent]) {
     if (side.light_screen_turns > 0) side.light_screen_turns -= 1;
     if (side.reflect_turns > 0) side.reflect_turns -= 1;
@@ -563,7 +774,13 @@ export function executeTurn(
 
   const playerPokemon = getActivePokemon(newState.player);
   const opponentPokemon = getActivePokemon(newState.opponent);
-  const order = resolveTurnOrder(playerAction, opponentAction, playerPokemon, opponentPokemon);
+  const order = resolveTurnOrder(
+    playerAction,
+    opponentAction,
+    playerPokemon,
+    opponentPokemon,
+    newState.weather.type,
+  );
 
   const firstAction = order.first === 'player' ? playerAction : opponentAction;
   const secondAction = order.first === 'player' ? opponentAction : playerAction;

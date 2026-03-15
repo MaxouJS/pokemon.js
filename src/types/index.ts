@@ -15,6 +15,7 @@ export type {
   EVs,
   Nature,
   StatStages,
+  LearnsetEntry,
 } from './common';
 
 export {
@@ -69,4 +70,5 @@ export type {
   DamageResult,
   EntryHazard,
   TeamMemberConfig,
+  BattleFormat,
 } from './battle';

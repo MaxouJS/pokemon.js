@@ -72,6 +72,13 @@ export interface Nature {
 /** Stat stage modifiers (-6 to +6) */
 export type StatStages = Record<BaseStatName, number>;
 
+/** A move a Pokemon can learn, with method and level */
+export interface LearnsetEntry {
+  move: string;
+  level: number;
+  method: 'level-up' | 'tm' | 'egg' | 'tutor';
+}
+
 /** All 18 standard Pokemon type names as a constant array */
 export const ALL_TYPES: PokemonTypeName[] = [
   'normal', 'fire', 'water', 'electric', 'grass', 'ice',
