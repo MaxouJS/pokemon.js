@@ -433,6 +433,49 @@ button.danger {
   line-height: 1.4;
 }
 
+/* ─── Ability Card ──────────────────────────────────── */
+.ability-card {
+  background: #111118;
+  border: 1px solid #1e1e2e;
+  border-radius: 10px;
+  padding: 14px 16px;
+  transition: border-color 0.15s;
+}
+
+.ability-card:hover {
+  border-color: #3a3a4a;
+}
+
+.ability-card .ability-name {
+  font-size: 14px;
+  font-weight: 700;
+  margin-bottom: 4px;
+}
+
+.ability-card .ability-meta {
+  font-size: 11px;
+  color: #888;
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  margin-bottom: 6px;
+}
+
+.ability-card .ability-effect {
+  font-size: 12px;
+  color: #666;
+  line-height: 1.5;
+  margin-bottom: 8px;
+}
+
+.ability-card .ability-sprites {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  align-items: flex-end;
+  margin-top: 6px;
+}
+
 /* ─── Type Chart ────────────────────────────────────── */
 .type-chart-grid {
   display: grid;

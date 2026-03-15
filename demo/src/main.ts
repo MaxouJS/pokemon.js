@@ -5,6 +5,10 @@ import { renderPokedex } from './pages/pokedex';
 import { renderTypeChart } from './pages/types';
 import { renderMoves } from './pages/moves';
 import { renderItems } from './pages/items';
+import { renderAbilities } from './pages/abilities';
+import { renderEvolution } from './pages/evolution';
+import { renderExperience } from './pages/experience';
+import { renderCapture } from './pages/capture';
 import { renderTeamBuilder } from './pages/team-builder';
 import { renderDamageCalc } from './pages/damage-calc';
 import { renderBattle } from './pages/battle';
@@ -12,18 +16,26 @@ import { renderDoubles } from './pages/doubles';
 
 setAssetBasePath('/');
 
-type PageKey = 'home' | 'pokedex' | 'types' | 'moves' | 'items' | 'team-builder' | 'damage-calc' | 'battle' | 'doubles';
+type PageKey =
+  | 'home'
+  | 'pokedex' | 'types' | 'moves' | 'items' | 'abilities'
+  | 'evolution' | 'experience' | 'capture'
+  | 'team-builder' | 'damage-calc' | 'battle' | 'doubles';
 
-const PAGES: Record<PageKey, { label: string; section: 'docs' | 'demos'; render: (container: HTMLElement) => void }> = {
+const PAGES: Record<PageKey, { label: string; section: 'docs' | 'data' | 'demos'; render: (container: HTMLElement) => void }> = {
   home:           { label: 'Getting Started', section: 'docs',  render: renderHome },
-  pokedex:        { label: 'Pokedex',         section: 'demos', render: renderPokedex },
-  types:          { label: 'Type Chart',      section: 'demos', render: renderTypeChart },
-  moves:          { label: 'Move Browser',    section: 'demos', render: renderMoves },
-  items:          { label: 'Item Browser',    section: 'demos', render: renderItems },
+  pokedex:        { label: 'Pokedex',         section: 'data',  render: renderPokedex },
+  types:          { label: 'Type Chart',      section: 'data',  render: renderTypeChart },
+  moves:          { label: 'Move Browser',    section: 'data',  render: renderMoves },
+  items:          { label: 'Item Browser',    section: 'data',  render: renderItems },
+  abilities:      { label: 'Ability Browser', section: 'data',  render: renderAbilities },
+  evolution:      { label: 'Evolution',       section: 'data',  render: renderEvolution },
+  experience:     { label: 'Experience & XP', section: 'data',  render: renderExperience },
+  capture:        { label: 'Capture Calc',    section: 'demos', render: renderCapture },
   'team-builder': { label: 'Team Builder',    section: 'demos', render: renderTeamBuilder },
   'damage-calc':  { label: 'Damage Calc',     section: 'demos', render: renderDamageCalc },
   battle:         { label: 'Battle Demo',     section: 'demos', render: renderBattle },
-  doubles:        { label: 'Doubles Battle', section: 'demos', render: renderDoubles },
+  doubles:        { label: 'Doubles Battle',  section: 'demos', render: renderDoubles },
 };
 
 let currentPage: PageKey = 'home';
@@ -50,6 +62,7 @@ function render() {
   sidebar.appendChild(logo);
 
   const docPages = Object.entries(PAGES).filter(([, v]) => v.section === 'docs');
+  const dataPages = Object.entries(PAGES).filter(([, v]) => v.section === 'data');
   const demoPages = Object.entries(PAGES).filter(([, v]) => v.section === 'demos');
 
   const addSection = (label: string) => {
@@ -71,11 +84,18 @@ function render() {
   addSection('Documentation');
   for (const [key, val] of docPages) addLink(key, val.label);
 
-  const spacer = document.createElement('div');
+  let spacer = document.createElement('div');
   spacer.style.marginTop = '16px';
   sidebar.appendChild(spacer);
 
-  addSection('Live Demos');
+  addSection('Data Browsers');
+  for (const [key, val] of dataPages) addLink(key, val.label);
+
+  spacer = document.createElement('div');
+  spacer.style.marginTop = '16px';
+  sidebar.appendChild(spacer);
+
+  addSection('Interactive Demos');
   for (const [key, val] of demoPages) addLink(key, val.label);
 
   const stats = document.createElement('div');
