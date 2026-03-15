@@ -100,7 +100,7 @@ function render() {
 
   const stats = document.createElement('div');
   stats.className = 'sidebar-stats';
-  stats.innerHTML = '649 Pokemon &middot; 577 Moves<br>224 Abilities &middot; 954 Items<br>All sprites &amp; sounds bundled';
+  stats.innerHTML = '649 Pokemon &middot; 577 Moves<br>224 Abilities &middot; 678 Items<br>All sprites &amp; sounds bundled';
   sidebar.appendChild(stats);
 
   layout.appendChild(sidebar);
