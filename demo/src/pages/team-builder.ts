@@ -73,10 +73,8 @@ export function renderTeamBuilder(container: HTMLElement) {
     resultsGrid.innerHTML = '';
     if (query.length < 2) return;
 
-    const names = searchPokemon(query).slice(0, 12);
-    for (const name of names) {
-      const p = getPokemon(name);
-      if (!p) continue;
+    const results = searchPokemon(query).slice(0, 12);
+    for (const p of results) {
 
       const alreadyIn = team.some(t => t.id === p.id);
       const card = el('div', { class: 'pokemon-card', style: `cursor:${alreadyIn || team.length >= MAX_TEAM ? 'not-allowed' : 'pointer'};opacity:${alreadyIn ? '0.4' : '1'};` });
