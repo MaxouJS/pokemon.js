@@ -1,4 +1,5 @@
-import type { BaseStats, EVs, IVs, NatureName, StatStages, StatusCondition, Terrain, VolatileStatus, Weather } from './common';
+import type { EVs, IVs, NatureName, StatStages } from './stats';
+import type { StatusCondition, Terrain, VolatileStatus, Weather } from './conditions';
 import type { Move } from './moves';
 import type { Pokemon, PokemonSpecies } from './pokemon';
 

@@ -1,4 +1,5 @@
-import type { BaseStats, PokemonTypeName } from './common';
+import type { PokemonTypeName } from './core';
+import type { BaseStats } from './stats';
 
 /** A Pokemon's ability slot */
 export interface PokemonAbility {

@@ -1,4 +1,4 @@
-import type { PokemonTypeName } from './common';
+import type { PokemonTypeName } from './core';
 
 /** Type effectiveness damage relations */
 export interface DamageRelations {

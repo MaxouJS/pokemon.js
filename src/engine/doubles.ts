@@ -19,78 +19,32 @@ import { calculateDamage } from './damage';
 import { checkAccuracy } from './accuracy';
 import { checkCritical } from './critical';
 import { applyEndOfTurnWeather } from './weather';
-import {
-  applyStatusDamage,
-  checkParalysisSkip,
-  checkFreezeThaw,
-  checkSleepWake,
-} from './status';
+import { applyStatusDamage } from './status';
 import { calcAllStats, getEffectiveStat } from './stats';
 import { getStatusSpeedModifier } from './status';
 import { getAbilityHandlers, checkSturdy } from './abilities';
 import { getHeldItemHandlers } from './held-items';
 import { placeHazard, applyEntryHazards, removeHazards } from './hazards';
+import {
+  checkParalysisSkip,
+  checkFreezeThaw,
+  checkSleepWake,
+} from './status';
+import {
+  logEntry,
+  hasAlivePokemon,
+  applyDamage,
+  applyHealing,
+  checkHpItems,
+  tryApplyStatus,
+  HAZARD_MOVES,
+  SCREEN_MOVES,
+  HAZARD_CLEAR_MOVES,
+} from './battle/helpers';
 
 type Side = 'player' | 'opponent';
 
-// ─── Helpers ──────────────────────────────────────────────────
-
-function logEntry(turn: number, message: string, type: BattleLogEntry['type']): BattleLogEntry {
-  return { turn, message, type };
-}
-
-function hasAlivePokemon(side: BattleSide): boolean {
-  return side.team.some(p => !p.is_fainted);
-}
-
-function applyDamage(pokemon: BattlePokemon, damage: number): void {
-  pokemon.current_hp = Math.max(0, pokemon.current_hp - damage);
-  if (pokemon.current_hp === 0) {
-    pokemon.is_fainted = true;
-    pokemon.status = null;
-  }
-}
-
-function applyHealing(pokemon: BattlePokemon, amount: number): void {
-  if (pokemon.is_fainted) return;
-  pokemon.current_hp = Math.min(pokemon.max_hp, pokemon.current_hp + amount);
-}
-
-function checkHpItems(pokemon: BattlePokemon, log: BattleLogEntry[], turn: number): void {
-  if (!pokemon.held_item || pokemon.is_fainted) return;
-  const itemHandlers = getHeldItemHandlers(pokemon.held_item);
-  itemHandlers?.onHpChanged?.(pokemon, log, turn);
-}
-
-function tryApplyStatus(
-  target: BattlePokemon,
-  status: StatusCondition,
-  log: BattleLogEntry[],
-  turn: number,
-): boolean {
-  if (target.status !== null) return false;
-  const abilityHandlers = getAbilityHandlers(target.ability);
-  if (abilityHandlers?.onStatusAttempt) {
-    if (!abilityHandlers.onStatusAttempt(status, target)) {
-      log.push(logEntry(turn, `${target.nickname}'s ${target.ability} prevents ${status}!`, 'ability'));
-      return false;
-    }
-  }
-  target.status = status;
-  target.status_turns = 0;
-  const statusNames: Record<string, string> = {
-    'burn': 'burned', 'freeze': 'frozen', 'paralysis': 'paralyzed',
-    'poison': 'poisoned', 'bad-poison': 'badly poisoned', 'sleep': 'put to sleep',
-  };
-  log.push(logEntry(turn, `${target.nickname} was ${statusNames[status] ?? status}!`, 'status'));
-  if (target.held_item) {
-    const itemHandlers = getHeldItemHandlers(target.held_item);
-    if (itemHandlers?.onStatusReceived?.(target, status)) {
-      log.push(logEntry(turn, `${target.nickname}'s ${target.held_item} cured its ${status}!`, 'item'));
-    }
-  }
-  return true;
-}
+// ─── Doubles-specific helpers ────────────────────────────────
 
 /** Get the active Pokemon for a given slot index (0 or 1). */
 function getActiveAtSlot(side: BattleSide, slot: number): BattlePokemon | null {
@@ -107,8 +61,6 @@ function getActivePokemonList(side: BattleSide): BattlePokemon[] {
     .filter(p => p && !p.is_fainted);
 }
 
-// ─── Move target classification ──────────────────────────────
-
 /** Determine if a move targets all opponents (spread move). */
 function isSpreadMove(moveTarget: string): boolean {
   return moveTarget === 'all-opponents' || moveTarget === 'all-other-pokemon';
@@ -119,7 +71,7 @@ function isSpreadMove(moveTarget: string): boolean {
 interface ActionEntry {
   action: BattleAction;
   side: Side;
-  slot: number; // 0 or 1
+  slot: number;
   priority: number;
   speed: number;
 }
@@ -175,14 +127,6 @@ function sortActions(entries: ActionEntry[]): ActionEntry[] {
 }
 
 // ─── Core execution ──────────────────────────────────────────
-
-const HAZARD_MOVES: Record<string, 'stealth-rock' | 'spikes' | 'toxic-spikes' | 'sticky-web'> = {
-  'stealth-rock': 'stealth-rock', 'spikes': 'spikes', 'toxic-spikes': 'toxic-spikes', 'sticky-web': 'sticky-web',
-};
-const SCREEN_MOVES: Record<string, 'reflect' | 'light-screen'> = {
-  'reflect': 'reflect', 'light-screen': 'light-screen',
-};
-const HAZARD_CLEAR_MOVES = new Set(['rapid-spin', 'defog']);
 
 function executeDoublesSwitch(
   state: BattleState,
@@ -265,32 +209,26 @@ function executeDoublesMove(
     const isSpread = isSpreadMove(move.target);
 
     if (isSpread) {
-      // Hit all active opponents
       targets.push(...getActivePokemonList(defenderSide));
     } else {
-      // Single target
       let defender: BattlePokemon | null = null;
       if (target === 'opponent-1') {
         defender = getActiveAtSlot(defenderSide, 1);
       } else if (target === 'ally') {
-        // Hit your own partner (rare)
         const partnerSlot = slot === 0 ? 1 : 0;
         defender = getActiveAtSlot(attackerSide, partnerSlot);
       }
-      // Default: opponent slot 0
       if (!defender) {
         defender = getActiveAtSlot(defenderSide, 0) ?? getActiveAtSlot(defenderSide, 1);
       }
       if (defender) targets.push(defender);
     }
 
-    // Spread damage multiplier: 0.75x when hitting multiple targets
     const spreadMod = isSpread && targets.length > 1 ? 0.75 : 1;
 
     for (const defender of targets) {
       if (defender.is_fainted) continue;
 
-      // Type immunity
       const defAbility = getAbilityHandlers(defender.ability);
       if (defAbility?.onTypeImmunity?.(move.type, defender)) {
         log.push(logEntry(state.turn, `It doesn't affect ${defender.nickname}... (${defender.ability})`, 'ability'));
@@ -557,13 +495,11 @@ function checkDoublesWin(state: BattleState, log: BattleLogEntry[]): void {
     state.winner = 'player';
     log.push(logEntry(state.turn, 'Opponent has no Pokemon left! Player wins!', 'info'));
   } else {
-    // Check if any slots need filling
     let needSwitch = false;
     for (const side of [state.player, state.opponent]) {
       for (let s = 0; s < side.active_indices.length; s++) {
         const p = side.team[side.active_indices[s]];
         if (p.is_fainted) {
-          // Auto-fill from bench if possible
           const benchIdx = side.team.findIndex((bp, i) => !bp.is_fainted && !side.active_indices.includes(i));
           if (benchIdx >= 0) {
             needSwitch = true;
@@ -587,11 +523,9 @@ export function executeDoublesTurn(
   playerActions: BattleAction[],
   opponentActions: BattleAction[],
 ): { state: BattleState; log: BattleLogEntry[] } {
-  // Clone state (import clone from battle.ts is internal, so we deep-clone here)
   const newState: BattleState = JSON.parse(JSON.stringify(state, (_key, val) =>
     val instanceof Set ? [...val] : val,
   ));
-  // Restore Sets
   newState.player.volatile = new Set(newState.player.volatile as any);
   newState.opponent.volatile = new Set(newState.opponent.volatile as any);
 
@@ -600,7 +534,6 @@ export function executeDoublesTurn(
 
   const turnLog: BattleLogEntry[] = [];
 
-  // Build and sort all 4 actions by priority/speed
   const allEntries = [
     ...buildActionEntries(playerActions, 'player', newState.player, newState.weather.type),
     ...buildActionEntries(opponentActions, 'opponent', newState.opponent, newState.weather.type),
@@ -608,15 +541,11 @@ export function executeDoublesTurn(
 
   const sorted = sortActions(allEntries);
 
-  // Execute each action in order
   for (const entry of sorted) {
     if ((newState.phase as string) === 'finished') break;
-
-    // Check if the acting Pokemon is still alive
     const side = entry.side === 'player' ? newState.player : newState.opponent;
     const actor = side.team[side.active_indices[entry.slot]];
     if (!actor || actor.is_fainted) continue;
-
     executeDoublesAction(newState, entry, turnLog);
   }
 

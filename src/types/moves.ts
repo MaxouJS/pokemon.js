@@ -1,4 +1,5 @@
-import type { DamageClass, PokemonTypeName, StatName } from './common';
+import type { PokemonTypeName, DamageClass } from './core';
+import type { StatName } from './stats';
 
 /** Metadata about a move's secondary effects */
 export interface MoveMeta {
