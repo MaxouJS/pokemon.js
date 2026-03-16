@@ -204,6 +204,47 @@ export { Battle } from './core/Battle';
 export { Trainer } from './core/Trainer';
 export type { BagSlot } from './core/Trainer';
 
+// ─── Sequencer (optional battle event system) ───────────────
+export {
+  parseBattleLog,
+  BattleEventPlayer,
+  BattleDirector,
+  createSnapshot,
+  cloneSnapshot,
+  sequenceTurn,
+  sequenceDoublesTurn,
+  sequenceCapture,
+  DEFAULT_DURATIONS,
+  SPEED_MULTIPLIERS,
+} from './sequencer';
+export type {
+  BattleEventKind,
+  BattleEvent,
+  BattleEventData,
+  BattleEventPlayerOptions,
+  BattleFrame,
+  DirectedTurnResult,
+  BattleSnapshot,
+  SideSnapshot,
+  PokemonSnapshot,
+  SequencedTurnResult,
+  SequencedCaptureResult,
+  SequencerSpeed,
+  MoveAnnounceData,
+  HitData,
+  EffectivenessData,
+  StatusInflictData,
+  StatusCureData,
+  StatChangeData,
+  SwitchData,
+  FaintData,
+  BallShakeData,
+  BallCaptureData,
+  WeatherData,
+  HazardData,
+  ItemData,
+} from './sequencer';
+
 // ─── Utils ───────────────────────────────────────────────────
 export {
   formatName,

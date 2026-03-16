@@ -8,6 +8,7 @@ export default defineConfig({
     'assets/index': 'src/assets/index.ts',
     'core/index': 'src/core/index.ts',
     'utils/index': 'src/utils/index.ts',
+    'sequencer/index': 'src/sequencer/index.ts',
   },
   format: ['esm', 'cjs'],
   dts: true,

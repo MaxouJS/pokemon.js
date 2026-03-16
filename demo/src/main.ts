@@ -13,6 +13,7 @@ import { renderTeamBuilder } from './pages/team-builder';
 import { renderDamageCalc } from './pages/damage-calc';
 import { renderBattle } from './pages/battle';
 import { renderDoubles } from './pages/doubles';
+import { renderSequencer } from './pages/sequencer';
 
 setAssetBasePath('/');
 
@@ -20,7 +21,7 @@ type PageKey =
   | 'home'
   | 'pokedex' | 'types' | 'moves' | 'items' | 'abilities'
   | 'evolution' | 'experience' | 'capture'
-  | 'team-builder' | 'damage-calc' | 'battle' | 'doubles';
+  | 'team-builder' | 'damage-calc' | 'battle' | 'doubles' | 'sequencer';
 
 const PAGES: Record<PageKey, { label: string; section: 'docs' | 'data' | 'demos'; render: (container: HTMLElement) => void }> = {
   home:           { label: 'Getting Started', section: 'docs',  render: renderHome },
@@ -36,6 +37,7 @@ const PAGES: Record<PageKey, { label: string; section: 'docs' | 'data' | 'demos'
   'damage-calc':  { label: 'Damage Calc',     section: 'demos', render: renderDamageCalc },
   battle:         { label: 'Battle Demo',     section: 'demos', render: renderBattle },
   doubles:        { label: 'Doubles Battle',  section: 'demos', render: renderDoubles },
+  sequencer:      { label: 'Sequencer',       section: 'demos', render: renderSequencer },
 };
 
 let currentPage: PageKey = 'home';
