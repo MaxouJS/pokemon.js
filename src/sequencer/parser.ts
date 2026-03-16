@@ -130,7 +130,7 @@ const matchStatusDamage: Matcher = (msg, type) => {
   if (type !== 'status') return null;
   const m = msg.match(/^(.+?) was (hurt by its burn|hurt by poison)! \((\d+) damage\)$/);
   if (!m) return null;
-  return { kind: 'status_damage', data: EMPTY, pokemon: m[1] };
+  return { kind: 'status_damage', data: { damage: parseInt(m[3]), current_hp: 0, max_hp: 0 }, pokemon: m[1] };
 };
 
 const matchToxicSpikesStatus: Matcher = (msg, type) => {
@@ -182,7 +182,7 @@ const matchWeatherDamage: Matcher = (msg, type) => {
   if (type !== 'weather') return null;
   const m = msg.match(/^(.+?) was buffeted by (.+?)! \((\d+) damage\)$/);
   if (!m) return null;
-  return { kind: 'weather_damage', data: { weather: m[2] }, pokemon: m[1] };
+  return { kind: 'weather_damage', data: { damage: parseInt(m[3]), current_hp: 0, max_hp: 0 }, pokemon: m[1] };
 };
 
 const matchWeatherEnd: Matcher = (msg, type) => {
@@ -270,15 +270,25 @@ const matchAbility: Matcher = (msg, type) => {
 
 const matchItemActivate: Matcher = (msg, type) => {
   if (type !== 'item') return null;
-  // "X hung on using its Focus Sash!" or "X's Leftovers restored 10 HP!"
-  // But NOT "Player threw a ..." (that's ball_throw)
   if (msg.match(/threw a/)) return null;
+  // "X's ItemName restored/activated/..." (e.g., "X's Lum Berry cured its burn!")
   const m = msg.match(/^(.+?)'s (.+?) /);
   if (m) return { kind: 'item_activate', data: { item_name: m[2] }, pokemon: m[1] };
+  // "X hung on using its ItemName!" (Focus Sash)
   const m2 = msg.match(/^(.+?) hung on using its (.+?)!$/);
   if (m2) return { kind: 'item_activate', data: { item_name: m2[2] }, pokemon: m2[1] };
-  const m3 = msg.match(/^(.+?) was cured/);
-  if (m3) return { kind: 'item_activate', data: { item_name: '' }, pokemon: m3[1] };
+  // "X lost some of its HP due to ItemName!" (Life Orb)
+  const m3 = msg.match(/^(.+?) lost some of its HP due to (.+?)!$/);
+  if (m3) return { kind: 'item_activate', data: { item_name: m3[2] }, pokemon: m3[1] };
+  // "X restored (a little )?HP (using|with) its ItemName!" (Leftovers, Shell Bell, Black Sludge, berries)
+  const m4 = msg.match(/^(.+?) restored (?:a little )?HP (?:using|with) its (.+?)!$/);
+  if (m4) return { kind: 'item_activate', data: { item_name: m4[2] }, pokemon: m4[1] };
+  // "X was hurt by its ItemName!" (Black Sludge on non-Poison type)
+  const m5 = msg.match(/^(.+?) was hurt by its (.+?)!$/);
+  if (m5) return { kind: 'item_activate', data: { item_name: m5[2] }, pokemon: m5[1] };
+  // "X was cured ..."
+  const m6 = msg.match(/^(.+?) was cured/);
+  if (m6) return { kind: 'item_activate', data: { item_name: '' }, pokemon: m6[1] };
   return null;
 };
 

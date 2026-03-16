@@ -226,6 +226,14 @@ function executeDoublesMove(
 
     const spreadMod = isSpread && targets.length > 1 ? 0.75 : 1;
 
+    // Multi-hit moves
+    const hitCount = (move.meta.min_hits !== null && move.meta.max_hits !== null)
+      ? Math.floor(Math.random() * (move.meta.max_hits - move.meta.min_hits + 1)) + move.meta.min_hits
+      : 1;
+
+    let totalDamage = 0;
+    let actualHits = 0;
+
     for (const defender of targets) {
       if (defender.is_fainted) continue;
 
@@ -240,58 +248,48 @@ function executeDoublesMove(
         continue;
       }
 
-      const isCritical = checkCritical(move, attacker, defender);
-      const result = calculateDamage(attacker, defender, move, {
-        weather: state.weather.type,
-        critical_override: isCritical,
-        attacker_side: attackerSide,
-        defender_side: defenderSide,
-      });
+      let effectivenessShown = false;
 
-      let finalDamage = Math.floor(result.damage * spreadMod);
-      finalDamage = checkSturdy(defender, finalDamage);
+      for (let hitNum = 0; hitNum < hitCount; hitNum++) {
+        if (defender.is_fainted) break;
+        actualHits++;
 
-      if (defender.held_item) {
-        const defItem = getHeldItemHandlers(defender.held_item);
-        if (defItem?.onTakeDamage) {
-          const takeResult = defItem.onTakeDamage(finalDamage, defender);
-          finalDamage = takeResult.damage;
-          if (takeResult.consumed) {
-            log.push(logEntry(state.turn, `${defender.nickname} hung on using its ${defender.held_item}!`, 'item'));
+        const isCritical = checkCritical(move, attacker, defender);
+        const result = calculateDamage(attacker, defender, move, {
+          weather: state.weather.type,
+          critical_override: isCritical,
+          attacker_side: attackerSide,
+          defender_side: defenderSide,
+        });
+
+        let finalDamage = Math.floor(result.damage * spreadMod);
+        finalDamage = checkSturdy(defender, finalDamage);
+
+        if (defender.held_item) {
+          const defItem = getHeldItemHandlers(defender.held_item);
+          if (defItem?.onTakeDamage) {
+            const takeResult = defItem.onTakeDamage(finalDamage, defender);
+            finalDamage = takeResult.damage;
+            if (takeResult.consumed) {
+              log.push(logEntry(state.turn, `${defender.nickname} hung on using its ${defender.held_item}!`, 'item'));
+            }
           }
         }
-      }
 
-      applyDamage(defender, finalDamage);
+        applyDamage(defender, finalDamage);
+        totalDamage += finalDamage;
 
-      if (result.critical) log.push(logEntry(state.turn, 'A critical hit!', 'damage'));
-      if (result.type_message) log.push(logEntry(state.turn, `It's ${result.type_message}!`, 'damage'));
-      log.push(logEntry(state.turn, `${defender.nickname} took ${finalDamage} damage! (${defender.current_hp}/${defender.max_hp} HP)`, 'damage'));
+        if (result.critical) log.push(logEntry(state.turn, 'A critical hit!', 'damage'));
+        if (result.type_message && !effectivenessShown) {
+          log.push(logEntry(state.turn, `It's ${result.type_message}!`, 'damage'));
+          effectivenessShown = true;
+        }
+        log.push(logEntry(state.turn, `${defender.nickname} took ${finalDamage} damage! (${defender.current_hp}/${defender.max_hp} HP)`, 'damage'));
 
-      if (attacker.held_item && finalDamage > 0) {
-        const atkItem = getHeldItemHandlers(attacker.held_item);
-        atkItem?.onAfterDamageDealt?.(attacker, finalDamage, log, state.turn);
-      }
+        checkHpItems(defender, log, state.turn);
 
-      checkHpItems(defender, log, state.turn);
-
-      if (defender.is_fainted) {
-        log.push(logEntry(state.turn, `${defender.nickname} fainted!`, 'faint'));
-      }
-
-      // Drain
-      if (move.meta.drain > 0 && result.damage > 0) {
-        const healAmount = Math.max(1, Math.floor(result.damage * move.meta.drain / 100));
-        applyHealing(attacker, healAmount);
-        log.push(logEntry(state.turn, `${attacker.nickname} drained ${healAmount} HP!`, 'info'));
-      }
-      // Recoil
-      if (move.meta.drain < 0 && result.damage > 0) {
-        const recoilAmount = Math.max(1, Math.floor(result.damage * Math.abs(move.meta.drain) / 100));
-        applyDamage(attacker, recoilAmount);
-        log.push(logEntry(state.turn, `${attacker.nickname} was hurt by recoil! (${recoilAmount} damage)`, 'damage'));
-        if (attacker.is_fainted) {
-          log.push(logEntry(state.turn, `${attacker.nickname} fainted from recoil!`, 'faint'));
+        if (defender.is_fainted) {
+          log.push(logEntry(state.turn, `${defender.nickname} fainted!`, 'faint'));
         }
       }
 
@@ -300,6 +298,32 @@ function executeDoublesMove(
         if (Math.random() * 100 < move.meta.flinch_chance) {
           defenderSide.volatile.add('flinch');
         }
+      }
+    }
+
+    if (hitCount > 1 && actualHits > 0) {
+      log.push(logEntry(state.turn, `Hit ${actualHits} time(s)!`, 'info'));
+    }
+
+    // Item effects once per move (Life Orb, Shell Bell)
+    if (attacker.held_item && totalDamage > 0) {
+      const atkItem = getHeldItemHandlers(attacker.held_item);
+      atkItem?.onAfterDamageDealt?.(attacker, totalDamage, log, state.turn);
+    }
+
+    // Drain (based on total damage)
+    if (move.meta.drain > 0 && totalDamage > 0) {
+      const healAmount = Math.max(1, Math.floor(totalDamage * move.meta.drain / 100));
+      applyHealing(attacker, healAmount);
+      log.push(logEntry(state.turn, `${attacker.nickname} drained ${healAmount} HP!`, 'info'));
+    }
+    // Recoil (based on total damage)
+    if (move.meta.drain < 0 && totalDamage > 0) {
+      const recoilAmount = Math.max(1, Math.floor(totalDamage * Math.abs(move.meta.drain) / 100));
+      applyDamage(attacker, recoilAmount);
+      log.push(logEntry(state.turn, `${attacker.nickname} was hurt by recoil! (${recoilAmount} damage)`, 'damage'));
+      if (attacker.is_fainted) {
+        log.push(logEntry(state.turn, `${attacker.nickname} fainted from recoil!`, 'faint'));
       }
     }
   }
@@ -347,6 +371,61 @@ function executeDoublesMove(
     const healAmount = Math.max(1, Math.floor(attacker.max_hp * move.meta.healing / 100));
     applyHealing(attacker, healAmount);
     log.push(logEntry(state.turn, `${attacker.nickname} restored ${healAmount} HP!`, 'info'));
+  }
+
+  // ─── Stat changes ───
+  if (move.stat_changes.length > 0 && !attacker.is_fainted) {
+    const chance = move.meta.stat_chance > 0 ? move.meta.stat_chance : 100;
+    if (Math.random() * 100 < chance) {
+      const isDamaging = move.damage_class !== 'status' && move.power !== null && move.power > 0;
+      const isSelfTargeted = move.target === 'user' || move.target === 'user-and-allies'
+        || move.target === 'user-or-ally' || move.target === 'users-field';
+
+      for (const change of move.stat_changes) {
+        // Determine target using same logic as singles
+        const primaryDefender = getActivePokemonList(defenderSide)[0];
+        let statTarget: BattlePokemon;
+        let statTargetName: string;
+
+        if (isDamaging && move.meta.stat_chance === 0) {
+          statTarget = attacker;
+          statTargetName = attacker.nickname;
+        } else if (isDamaging) {
+          statTarget = change.change > 0 ? attacker : (primaryDefender ?? attacker);
+          statTargetName = statTarget.nickname;
+        } else if (isSelfTargeted) {
+          statTarget = attacker;
+          statTargetName = attacker.nickname;
+        } else {
+          statTarget = primaryDefender ?? attacker;
+          statTargetName = statTarget.nickname;
+        }
+
+        if (statTarget.is_fainted) continue;
+
+        const statKey = change.stat as keyof typeof statTarget.stat_stages;
+        if (!(statKey in statTarget.stat_stages)) continue;
+        const oldStage = statTarget.stat_stages[statKey];
+        const newStage = Math.max(-6, Math.min(6, oldStage + change.change));
+        statTarget.stat_stages[statKey] = newStage;
+
+        if (newStage !== oldStage) {
+          const diff = newStage - oldStage;
+          const direction = diff > 0 ? 'rose' : 'fell';
+          const intensity = Math.abs(diff) >= 3 ? 'drastically' : Math.abs(diff) === 2 ? 'sharply' : '';
+          log.push(logEntry(
+            state.turn,
+            `${statTargetName}'s ${change.stat} ${intensity} ${direction}!`.replace('  ', ' '),
+            'info',
+          ));
+        } else {
+          const msg = newStage >= 6
+            ? `${statTargetName}'s ${change.stat} won't go any higher!`
+            : `${statTargetName}'s ${change.stat} won't go any lower!`;
+          log.push(logEntry(state.turn, msg, 'info'));
+        }
+      }
+    }
   }
 
   // Status ailment (applied to primary target only)

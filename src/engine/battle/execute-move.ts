@@ -100,63 +100,84 @@ export function executeMove(
       return;
     }
 
-    const isCritical = checkCritical(move, attacker, defender);
-    const result = calculateDamage(attacker, defender, move, {
-      weather: state.weather.type,
-      critical_override: isCritical,
-      attacker_side: attackerSide,
-      defender_side: defenderSide,
-    });
+    // Multi-hit moves (Bullet Seed, Rock Blast, Double Slap, etc.)
+    const hitCount = (move.meta.min_hits !== null && move.meta.max_hits !== null)
+      ? Math.floor(Math.random() * (move.meta.max_hits - move.meta.min_hits + 1)) + move.meta.min_hits
+      : 1;
 
-    let finalDamage = result.damage;
+    let totalDamage = 0;
+    let actualHits = 0;
+    let effectivenessShown = false;
 
-    finalDamage = checkSturdy(defender, finalDamage);
+    for (let hitNum = 0; hitNum < hitCount; hitNum++) {
+      if (defender.is_fainted) break;
+      actualHits++;
 
-    if (defender.held_item) {
-      const defItem = getHeldItemHandlers(defender.held_item);
-      if (defItem?.onTakeDamage) {
-        const takeResult = defItem.onTakeDamage(finalDamage, defender);
-        finalDamage = takeResult.damage;
-        if (takeResult.consumed) {
-          log.push(logEntry(state.turn, `${defender.nickname} hung on using its ${defender.held_item}!`, 'item'));
+      const isCritical = checkCritical(move, attacker, defender);
+      const result = calculateDamage(attacker, defender, move, {
+        weather: state.weather.type,
+        critical_override: isCritical,
+        attacker_side: attackerSide,
+        defender_side: defenderSide,
+      });
+
+      let finalDamage = result.damage;
+
+      finalDamage = checkSturdy(defender, finalDamage);
+
+      if (defender.held_item) {
+        const defItem = getHeldItemHandlers(defender.held_item);
+        if (defItem?.onTakeDamage) {
+          const takeResult = defItem.onTakeDamage(finalDamage, defender);
+          finalDamage = takeResult.damage;
+          if (takeResult.consumed) {
+            log.push(logEntry(state.turn, `${defender.nickname} hung on using its ${defender.held_item}!`, 'item'));
+          }
         }
+      }
+
+      applyDamage(defender, finalDamage);
+      totalDamage += finalDamage;
+
+      if (result.critical) {
+        log.push(logEntry(state.turn, 'A critical hit!', 'damage'));
+      }
+      if (result.type_message && !effectivenessShown) {
+        log.push(logEntry(state.turn, `It's ${result.type_message}!`, 'damage'));
+        effectivenessShown = true;
+      }
+      log.push(logEntry(
+        state.turn,
+        `${defender.nickname} took ${finalDamage} damage! (${defender.current_hp}/${defender.max_hp} HP)`,
+        'damage',
+      ));
+
+      checkHpItems(defender, log, state.turn);
+
+      if (defender.is_fainted) {
+        log.push(logEntry(state.turn, `${defender.nickname} fainted!`, 'faint'));
       }
     }
 
-    applyDamage(defender, finalDamage);
-
-    if (result.critical) {
-      log.push(logEntry(state.turn, 'A critical hit!', 'damage'));
+    if (hitCount > 1 && actualHits > 0) {
+      log.push(logEntry(state.turn, `Hit ${actualHits} time(s)!`, 'info'));
     }
-    if (result.type_message) {
-      log.push(logEntry(state.turn, `It's ${result.type_message}!`, 'damage'));
-    }
-    log.push(logEntry(
-      state.turn,
-      `${defender.nickname} took ${finalDamage} damage! (${defender.current_hp}/${defender.max_hp} HP)`,
-      'damage',
-    ));
 
-    if (attacker.held_item && finalDamage > 0) {
+    // Attacker item effects apply once per move, not per hit (Life Orb, Shell Bell)
+    if (attacker.held_item && totalDamage > 0) {
       const atkItem = getHeldItemHandlers(attacker.held_item);
-      atkItem?.onAfterDamageDealt?.(attacker, finalDamage, log, state.turn);
+      atkItem?.onAfterDamageDealt?.(attacker, totalDamage, log, state.turn);
     }
 
-    checkHpItems(defender, log, state.turn);
-
-    if (defender.is_fainted) {
-      log.push(logEntry(state.turn, `${defender.nickname} fainted!`, 'faint'));
-    }
-
-    // Drain moves
-    if (move.meta.drain > 0 && result.damage > 0) {
-      const healAmount = Math.max(1, Math.floor(result.damage * move.meta.drain / 100));
+    // Drain moves (based on total damage)
+    if (move.meta.drain > 0 && totalDamage > 0) {
+      const healAmount = Math.max(1, Math.floor(totalDamage * move.meta.drain / 100));
       applyHealing(attacker, healAmount);
       log.push(logEntry(state.turn, `${attacker.nickname} drained ${healAmount} HP!`, 'info'));
     }
-    // Recoil moves
-    if (move.meta.drain < 0 && result.damage > 0) {
-      const recoilAmount = Math.max(1, Math.floor(result.damage * Math.abs(move.meta.drain) / 100));
+    // Recoil moves (based on total damage)
+    if (move.meta.drain < 0 && totalDamage > 0) {
+      const recoilAmount = Math.max(1, Math.floor(totalDamage * Math.abs(move.meta.drain) / 100));
       applyDamage(attacker, recoilAmount);
       log.push(logEntry(state.turn, `${attacker.nickname} was hurt by recoil! (${recoilAmount} damage)`, 'damage'));
       if (attacker.is_fainted) {
@@ -234,9 +255,33 @@ export function executeMove(
   if (move.stat_changes.length > 0 && !attacker.is_fainted) {
     const chance = move.meta.stat_chance > 0 ? move.meta.stat_chance : 100;
     if (Math.random() * 100 < chance) {
+      // Determine stat change targeting based on move properties
+      const isDamaging = move.damage_class !== 'status' && move.power !== null && move.power > 0;
+      const isSelfTargeted = move.target === 'user' || move.target === 'user-and-allies'
+        || move.target === 'user-or-ally' || move.target === 'users-field';
+
       for (const change of move.stat_changes) {
-        const target = change.change > 0 ? attacker : defender;
-        const targetName = change.change > 0 ? attacker.nickname : defender.nickname;
+        let target: typeof attacker;
+        let targetName: string;
+
+        if (isDamaging && move.meta.stat_chance === 0) {
+          // Guaranteed self-effects on damaging moves: Close Combat, Superpower, V-Create, etc.
+          target = attacker;
+          targetName = attacker.nickname;
+        } else if (isDamaging) {
+          // Secondary effects on damaging moves:
+          // Positive → self (Ancientpower, Charge Beam), Negative → opponent (Psychic, Crunch)
+          target = change.change > 0 ? attacker : defender;
+          targetName = change.change > 0 ? attacker.nickname : defender.nickname;
+        } else if (isSelfTargeted) {
+          // Self-targeting status moves: Shell Smash, Swords Dance, Calm Mind, etc.
+          target = attacker;
+          targetName = attacker.nickname;
+        } else {
+          // Opponent-targeting status moves: Growl, Charm, Swagger, etc.
+          target = defender;
+          targetName = defender.nickname;
+        }
 
         if (target.is_fainted) continue;
 
