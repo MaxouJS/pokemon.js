@@ -92,6 +92,42 @@ export function executeMove(
     return;
   }
 
+  // ─── OHKO moves (Guillotine, Horn Drill, Fissure, Sheer Cold) ───
+  if (move.meta.category === 'ohko') {
+    const defAbility = getAbilityHandlers(defender.ability);
+    if (defAbility?.onTypeImmunity?.(move.type, defender)) {
+      log.push(logEntry(state.turn, `It doesn't affect ${defender.nickname}... (${defender.ability})`, 'ability'));
+      return;
+    }
+    const damage = defender.current_hp;
+    applyDamage(defender, damage);
+    log.push(logEntry(state.turn, `It's a one-hit KO!`, 'damage'));
+    log.push(logEntry(
+      state.turn,
+      `${defender.nickname} took ${damage} damage! (0/${defender.max_hp} HP)`,
+      'damage',
+    ));
+    log.push(logEntry(state.turn, `${defender.nickname} fainted!`, 'faint'));
+    return;
+  }
+
+  // ─── Final Gambit (damage = user's remaining HP, then user faints) ───
+  if (move.name === 'final-gambit') {
+    const damage = attacker.current_hp;
+    applyDamage(defender, damage);
+    log.push(logEntry(
+      state.turn,
+      `${defender.nickname} took ${damage} damage! (${defender.current_hp}/${defender.max_hp} HP)`,
+      'damage',
+    ));
+    if (defender.is_fainted) {
+      log.push(logEntry(state.turn, `${defender.nickname} fainted!`, 'faint'));
+    }
+    applyDamage(attacker, attacker.current_hp);
+    log.push(logEntry(state.turn, `${attacker.nickname} fainted!`, 'faint'));
+    return;
+  }
+
   // ─── Handle damaging moves ───
   if (move.damage_class !== 'status' && move.power !== null && move.power > 0) {
     const defAbility = getAbilityHandlers(defender.ability);
@@ -325,5 +361,11 @@ export function executeMove(
         tryApplyStatus(defender, ailment as StatusCondition, log, state.turn);
       }
     }
+  }
+
+  // ─── Self-KO moves (Explosion, Self-Destruct, Memento, Healing Wish) ───
+  if (move.effect.toLowerCase().includes('user faints') && !attacker.is_fainted) {
+    applyDamage(attacker, attacker.current_hp);
+    log.push(logEntry(state.turn, `${attacker.nickname} fainted!`, 'faint'));
   }
 }

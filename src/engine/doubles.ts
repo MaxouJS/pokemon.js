@@ -203,6 +203,42 @@ function executeDoublesMove(
   attacker.pp[move.name] = Math.max(0, (attacker.pp[move.name] ?? 0) - 1);
   log.push(logEntry(state.turn, `${attacker.nickname} used ${move.name}!`, 'move'));
 
+  // ─── OHKO moves (Guillotine, Horn Drill, Fissure, Sheer Cold) ───
+  if (move.meta.category === 'ohko') {
+    const ohkoTarget = getActivePokemonList(defenderSide)[0];
+    if (ohkoTarget && !ohkoTarget.is_fainted) {
+      const defAbility = getAbilityHandlers(ohkoTarget.ability);
+      if (defAbility?.onTypeImmunity?.(move.type, ohkoTarget)) {
+        log.push(logEntry(state.turn, `It doesn't affect ${ohkoTarget.nickname}... (${ohkoTarget.ability})`, 'ability'));
+      } else if (checkAccuracy(move, attacker, ohkoTarget)) {
+        const damage = ohkoTarget.current_hp;
+        applyDamage(ohkoTarget, damage);
+        log.push(logEntry(state.turn, `It's a one-hit KO!`, 'damage'));
+        log.push(logEntry(state.turn, `${ohkoTarget.nickname} took ${damage} damage! (0/${ohkoTarget.max_hp} HP)`, 'damage'));
+        log.push(logEntry(state.turn, `${ohkoTarget.nickname} fainted!`, 'faint'));
+      } else {
+        log.push(logEntry(state.turn, `${attacker.nickname}'s attack missed!`, 'info'));
+      }
+    }
+    return;
+  }
+
+  // ─── Final Gambit ───
+  if (move.name === 'final-gambit') {
+    const gambitTarget = getActivePokemonList(defenderSide)[0];
+    if (gambitTarget && !gambitTarget.is_fainted) {
+      const damage = attacker.current_hp;
+      applyDamage(gambitTarget, damage);
+      log.push(logEntry(state.turn, `${gambitTarget.nickname} took ${damage} damage! (${gambitTarget.current_hp}/${gambitTarget.max_hp} HP)`, 'damage'));
+      if (gambitTarget.is_fainted) {
+        log.push(logEntry(state.turn, `${gambitTarget.nickname} fainted!`, 'faint'));
+      }
+    }
+    applyDamage(attacker, attacker.current_hp);
+    log.push(logEntry(state.turn, `${attacker.nickname} fainted!`, 'faint'));
+    return;
+  }
+
   if (move.damage_class !== 'status' && move.power !== null && move.power > 0) {
     // Determine targets
     const targets: BattlePokemon[] = [];
@@ -442,6 +478,12 @@ function executeDoublesMove(
         }
       }
     }
+  }
+
+  // ─── Self-KO moves (Explosion, Self-Destruct, Memento, Healing Wish) ───
+  if (move.effect.toLowerCase().includes('user faints') && !attacker.is_fainted) {
+    applyDamage(attacker, attacker.current_hp);
+    log.push(logEntry(state.turn, `${attacker.nickname} fainted!`, 'faint'));
   }
 }
 
